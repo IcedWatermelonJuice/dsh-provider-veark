@@ -9,6 +9,8 @@
   &nbsp;
   <a href="https://www.npmjs.com/package/@deepseek-ai/dsh"><img src="https://img.shields.io/badge/DSH-0.1.2--alpha.1-4c6ef5?style=flat-square&amp;labelColor=454a54" alt="DSH"></a>
   &nbsp;
+  <a href="https://www.npmjs.com/package/@volcengine/ark-runtime"><img src="https://img.shields.io/badge/SDK-%40volcengine%2Fark--runtime-red?style=flat-square&amp;labelColor=454a54" alt="Volcengine Ark Runtime SDK"></a>
+  &nbsp;
   <img src="https://img.shields.io/badge/node-%E2%89%A522-339933?style=flat-square" alt="Node">
   &nbsp;
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License">

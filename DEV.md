@@ -2,6 +2,63 @@
 
 面向插件开发/维护者。用户文档见 [README.md](./README.md) / [README_EN.md](./README_EN.md)。
 
+## 路线图：这个插件是怎么工作的
+
+一句话：**对话与流式解析全权交给火山官方 SDK，插件自己只做"DSH 契约 ←→ 火山协议"的翻译层、图片管线和降级状态机**。
+
+```
+用户消息（DSH 会话）
+   │
+   ▼
+lib/index.js ── 安装时向宿主 llm 服务注册 provider `volcengine` + adapter + 设置分区
+   │
+   ▼
+lib/adapter.js ── 把 DSH 消息（含图片块、工具调用）翻译成 Responses API 请求
+   │                  │
+   │                  ├─ 文本/流式：@volcengine/ark-runtime 的 createResponsesStream()
+   │                  │   （官方 SDK 负责 SSE 解析、[DONE]、重试=0，事件再翻回 DSH StreamChunk）
+   │                  │
+   │                  └─ 图片：lib/pipeline.js
+   │                        ├─ 收集请求里的全部图片引用（含嵌套 tool-result）
+   │                        ├─ files 模式：lib/files-api.js（官方 SDK uploadFile）上传
+   │                        │   → {type:"input_image", file_id}（去重 + 本地索引复用）
+   │                        └─ base64 模式：{type:"input_image", image_url:"data:..."}
+   │
+   ▼
+lib/policy.js ── 压缩预算（像素/字节）、Files 可用性状态机、状态持久化
+   │              （上传失败 → 标记原因 → 降级 base64 → 按间隔重探）
+   ▼
+宿主 DSH（agent-loop 消费 adapter 流，密钥走凭据服务/环境变量解析）
+```
+
+### 自己写的模块（`lib/`）
+
+| 模块 | 职责 |
+|---|---|
+| `index.js` | 装配：provider/adapter 注册、schemastery 设置分区、凭据解析链（凭据服务 → 环境变量） |
+| `adapter.js` | DSH 消息 ↔ Responses wire 的翻译、DSH StreamChunk 事件翻译、超时看门狗、请求级重试 |
+| `pipeline.js` | 图片管线：引用收集、上传去重（并发合并 promise）、`veark-` 前缀索引复用、配额回收 |
+| `files-api.js` | Ark Files 传输层的错误分类（auth/notfound/timeout/network）、配额错误识别 |
+| `policy.js` | 图片压缩预算（总像素/单图字节/low-detail）、FilesModeController 状态机、原子持久化 |
+| `client.js` | 设置 → 插件 页的配置卡片（无构建 bundle，密钥写只读控件走 `api.credentials.set`） |
+
+### 走的现有 SDK / 宿主服务（自己不写）
+
+| 依赖 | 用在哪 |
+|---|---|
+| `@volcengine/ark-runtime`（火山官方 SDK） | **对话流式**（`createResponsesStream()`，SSE/`[DONE]`/usage 全由它解析）与 **Files 传输**（`uploadFile`/`retrieveFile`/`listFiles`/`deleteFile`） |
+| `@deepseek-ai/dsh-llm` | LlmAdapter 契约、LlmError、重试策略、图片句柄文本 |
+| `@deepseek-ai/dsh-settings` | 设置分区安装、命名空间、热生效 |
+| `@deepseek-ai/dsh-credentials` | 密钥存取（卡片"密钥值"控件写的就是它） |
+| `@deepseek-ai/dsh-atomic-write` / `dsh-home-paths` / `dsh-launch-environment` / `dsh-timeout` | 原子写 + 文件锁、DSH_HOME 解析、启动环境变量回落、超时原语 |
+| `@deepseek-ai/schemastery` | 设置 schema（provider 卡片与 settings.yaml 同源） |
+
+### 关键设计取舍
+
+- **SDK 管 wire，插件管语义**：SDK 只保证把 Responses 流接回来；DSH 要的是 StreamChunk、finish 语义、工具调用块——这层翻译（含 reasoning、tool-call、usage 映射）是 adapter 的核心工作量。
+- **图片消息零硬失败**：files 上传被拒/超时/索引失效都收敛到 base64 重试，状态机只决定"下次先试哪条路"，不让用户消息死于图片。
+- **双端点分离**：对话钉死 coding 网关（计费），files 域可切（可用性），互不牵连。
+
 ## 目录结构
 
 ```
