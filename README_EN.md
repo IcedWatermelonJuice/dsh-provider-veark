@@ -1,6 +1,8 @@
 # dsh-provider-veark · Volcengine Ark Coding Plan Provider for DeepSeek Harness
 
-English | [中文](README.md)
+<p align="center">
+  <a href="README.md">中文</a> | English
+</p>
 
 <p align="center">
   <a href="https://github.com/IcedWatermelonJuice/dsh-provider-veark/releases"><img src="https://img.shields.io/github/v/release/IcedWatermelonJuice/dsh-provider-veark?style=flat-square" alt="Version"></a>

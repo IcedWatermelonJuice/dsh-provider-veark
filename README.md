@@ -1,6 +1,8 @@
 # dsh-provider-veark · 火山方舟 Coding Plan Provider for DeepSeek Harness
 
-中文 | [English](README_EN.md)
+<p align="center">
+  中文 | <a href="README_EN.md">English</a>
+</p>
 
 <p align="center">
   <a href="https://github.com/IcedWatermelonJuice/dsh-provider-veark/releases"><img src="https://img.shields.io/github/v/release/IcedWatermelonJuice/dsh-provider-veark?style=flat-square" alt="Version"></a>
