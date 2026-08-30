@@ -1,0 +1,11 @@
+# dsh-provider-veark bundle patch：把本插件贡献进宿主合成树。
+#
+# 本插件是 HOST-PLANE 的 LLM provider 适配器（与 dsh-llm-deepseek 同层）：
+# 它注册 `volcengine` provider 与设置分区 `dsh-provider-veark`，
+# 必须落在宿主合成里，不能放进 agent preset。
+#
+# key / baseURL / 模型目录均不内联：全部按请求从 `dsh-provider-veark:`
+# 设置分区解析（installSettingsSection 接管 settings.yaml 与设置页）。
+- insert:
+    - id: dsh-provider-veark
+      name: 'dsh-provider-veark'
