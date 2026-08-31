@@ -85,7 +85,7 @@ pnpm test   # node --test test/unit.test.mjs test/client-card.test.mjs test/rend
 ## 发布（GitHub）
 
 1. 修正 `package.json` 的 `repository.url` 占位符（`OWNER`）与 README 的安装命令（`<user>`）。
-2. `pnpm publish` / npm 发布，或直接以 git 仓库作为安装源（`dsh.plugin.add` 支持 `github:<user>/<repo>`）。
+2. `pnpm publish` / npm 发布（scope 包首次发布需 `npm publish --access public`），或直接以 git 仓库作为安装源（`dsh.plugin.add` 支持 `github:<user>/<repo>`）。
 3. `package.json` 的 `files` 白名单只带 `lib/`、`cordis.patch.yml`、README 与本文件。
 
 ## 运行状态（DSH_HOME/dsh-provider-veark/）
@@ -100,8 +100,8 @@ pnpm test   # node --test test/unit.test.mjs test/client-card.test.mjs test/rend
 
 0. **诊断**（不启动即可看合成树）：`dsh --profile web --dump-config`
 1. **软禁用**（可逆）：编辑 `profiles\web\cordis.patch.yml`，写入 `- id: dsh-provider-veark` + `disabled: true`；恢复即删。
-2. **摘除层**：从 `profiles\web\package.json` 的 `dsh.profile.bundles` 删除 `"dsh-provider-veark"`。
-3. **彻底卸载**：`dsh plugin --profile web remove dsh-provider-veark`（store 报错时加 `--store-dir D:\ProgramData\pnpm-store`）。
+2. **摘除层**：从 `profiles\web\package.json` 的 `dsh.profile.bundles` 删除 `"@icedcola/dsh-provider-veark"`。
+3. **彻底卸载**：`dsh plugin --profile web remove @icedcola/dsh-provider-veark`（store 报错时加 `--store-dir D:\ProgramData\pnpm-store`）。
 4. **可选清理**：删除 `DSH_HOME\dsh-provider-veark\`。
 5. **警告**：`link:` 安装期间不要删除/移动工作区目录，否则 bundle 解析失效；要"拷贝式"安装先卸载再以目录重新 add。
 

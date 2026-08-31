@@ -29,13 +29,27 @@
 ---
 ## Install
 
+Pick any one of the three ways below, then **restart DSH**.
+
+### Option 1: npm registry (recommended)
+
+```bash
+dsh plugin add @icedcola/dsh-provider-veark
+```
+
+### Option 2: GitHub source
+
 ```bash
 dsh plugin add github:IcedWatermelonJuice/dsh-provider-veark
-# or from a local directory
+```
+
+### Option 3: local link (development)
+
+```bash
 dsh plugin add /path_to_dsh-provider-veark
 ```
 
-**Restart DSH** after installing.
+> A local install is a **link-style install**: it references the source directory directly, so code changes take effect immediately; do **not** delete or move that directory while installed, or bundle resolution breaks.
 
 ## Configuration
 
@@ -78,7 +92,7 @@ Alternatively, skip the card entirely and set the `ARK_API_KEY` environment vari
 ## Uninstall
 
 ```bash
-dsh plugin --profile web remove dsh-provider-veark
+dsh plugin --profile web remove @icedcola/dsh-provider-veark
 ```
 
 Then restart DSH. The plugin does not modify any host files; afterwards you may also delete `%DSH_HOME%\dsh-provider-veark\` (only this plugin's state files).
