@@ -8,4 +8,4 @@
 # 设置分区解析（installSettingsSection 接管 settings.yaml 与设置页）。
 - insert:
     - id: dsh-provider-veark
-      name: 'dsh-provider-veark'
+      name: '@icedcola/dsh-provider-veark'
