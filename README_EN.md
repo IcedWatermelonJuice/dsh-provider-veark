@@ -31,25 +31,31 @@
 
 The commands below use the `web` profile as an example (replace it with your own profile name, e.g. `headless`). Pick any one of the three ways, then **restart DSH**.
 
+> **First install fails with `ERR_PNPM_IGNORED_BUILDS`?** pnpm 11+ blocks dependency build scripts by default (involving `protobufjs`). Allow the build once, then re-run the install command:
+>
+> ```bash
+> dsh plugin --profile web approve-builds protobufjs
+> ```
+>
+> After approving, re-run the install command below. You only need to do this once.
+
 ### Option 1: npm registry (recommended)
 
 ```bash
-dsh plugin --profile web add @icedcola/dsh-provider-veark --config.allowBuilds.protobufjs=false
+dsh plugin --profile web add @icedcola/dsh-provider-veark
 ```
 
 ### Option 2: GitHub source
 
 ```bash
-dsh plugin --profile web add github:IcedWatermelonJuice/dsh-provider-veark --config.allowBuilds.protobufjs=false
+dsh plugin --profile web add github:IcedWatermelonJuice/dsh-provider-veark
 ```
 
 ### Option 3: local link (development)
 
 ```bash
-dsh plugin --profile web add /path_to_dsh-provider-veark --config.allowBuilds.protobufjs=false
+dsh plugin --profile web add /path_to_dsh-provider-veark
 ```
-
-> **Why `--config.allowBuilds.protobufjs=false`**: pnpm 11+ blocks dependency build scripts by default; without this flag the first install fails with `ERR_PNPM_IGNORED_BUILDS` (mentioning `protobufjs`). The flag installs protobufjs normally and only skips its build script (the package ships prebuilt artifacts; neither this plugin nor the Files API needs that script). Keep the flag on every install — no other configuration needed.
 
 > A local install is a **link-style install**: it references the source directory directly, so code changes take effect immediately; do **not** delete or move that directory while installed, or bundle resolution breaks.
 

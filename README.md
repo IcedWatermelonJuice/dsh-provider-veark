@@ -41,25 +41,31 @@
 
 以下命令以 `web` profile 为例（profile 名不同请替换，如 `headless`）。三种方式任选其一，安装后**重启 DSH** 生效。
 
+> **首次安装报错 `ERR_PNPM_IGNORED_BUILDS`？** pnpm 11+ 默认禁止依赖执行构建脚本（涉及 `protobufjs`），先手动放行一次构建，再重新执行安装命令即可：
+>
+> ```bash
+> dsh plugin --profile web approve-builds protobufjs
+> ```
+>
+> 放行后重新跑一遍下方安装命令，只需处理这一次。
+
 ### 方式一：npm 源（推荐）
 
 ```bash
-dsh plugin --profile web add @icedcola/dsh-provider-veark --config.allowBuilds.protobufjs=false
+dsh plugin --profile web add @icedcola/dsh-provider-veark
 ```
 
 ### 方式二：GitHub 源
 
 ```bash
-dsh plugin --profile web add github:IcedWatermelonJuice/dsh-provider-veark --config.allowBuilds.protobufjs=false
+dsh plugin --profile web add github:IcedWatermelonJuice/dsh-provider-veark
 ```
 
 ### 方式三：本地 link（开发调试）
 
 ```bash
-dsh plugin --profile web add /path_to_dsh-provider-veark --config.allowBuilds.protobufjs=false
+dsh plugin --profile web add /path_to_dsh-provider-veark
 ```
-
-> **为什么要带 `--config.allowBuilds.protobufjs=false`**：pnpm 11+ 默认禁止依赖执行构建脚本，缺这个参数首次安装会报 `ERR_PNPM_IGNORED_BUILDS`（提示 `protobufjs`）并中断。该参数照常安装 protobufjs、仅跳过其构建脚本（包自带预编译产物，不影响本插件与 Files API 功能），每次安装带上即可，无需其他配置。
 
 > 本地安装是 **link 方式**：直接引用源码目录，改动即时生效；但安装期间**不要删除或移动**该目录，否则 bundle 解析失效。
 
