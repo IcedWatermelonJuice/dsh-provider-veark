@@ -29,24 +29,24 @@
 ---
 ## Install
 
-Pick any one of the three ways below, then **restart DSH**.
+The commands below use the `web` profile as an example (replace it with your own profile name, e.g. `headless`). Pick any one of the three ways, then **restart DSH**.
 
 ### Option 1: npm registry (recommended)
 
 ```bash
-dsh plugin add @icedcola/dsh-provider-veark
+dsh plugin --profile web add @icedcola/dsh-provider-veark
 ```
 
 ### Option 2: GitHub source
 
 ```bash
-dsh plugin add github:IcedWatermelonJuice/dsh-provider-veark
+dsh plugin --profile web add github:IcedWatermelonJuice/dsh-provider-veark
 ```
 
 ### Option 3: local link (development)
 
 ```bash
-dsh plugin add /path_to_dsh-provider-veark
+dsh plugin --profile web add /path_to_dsh-provider-veark
 ```
 
 > A local install is a **link-style install**: it references the source directory directly, so code changes take effect immediately; do **not** delete or move that directory while installed, or bundle resolution breaks.

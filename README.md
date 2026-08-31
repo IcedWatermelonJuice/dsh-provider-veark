@@ -39,24 +39,24 @@
 
 ## 安装
 
-三种方式任选其一，安装后**重启 DSH** 生效。
+以下命令以 `web` profile 为例（profile 名不同请替换，如 `headless`）。三种方式任选其一，安装后**重启 DSH** 生效。
 
 ### 方式一：npm 源（推荐）
 
 ```bash
-dsh plugin add @icedcola/dsh-provider-veark
+dsh plugin --profile web add @icedcola/dsh-provider-veark
 ```
 
 ### 方式二：GitHub 源
 
 ```bash
-dsh plugin add github:IcedWatermelonJuice/dsh-provider-veark
+dsh plugin --profile web add github:IcedWatermelonJuice/dsh-provider-veark
 ```
 
 ### 方式三：本地 link（开发调试）
 
 ```bash
-dsh plugin add /path_to_dsh-provider-veark
+dsh plugin --profile web add /path_to_dsh-provider-veark
 ```
 
 > 本地安装是 **link 方式**：直接引用源码目录，改动即时生效；但安装期间**不要删除或移动**该目录，否则 bundle 解析失效。
