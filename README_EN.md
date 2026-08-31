@@ -34,20 +34,22 @@ The commands below use the `web` profile as an example (replace it with your own
 ### Option 1: npm registry (recommended)
 
 ```bash
-dsh plugin --profile web add @icedcola/dsh-provider-veark
+dsh plugin --profile web add @icedcola/dsh-provider-veark --config.allowBuilds.protobufjs=false
 ```
 
 ### Option 2: GitHub source
 
 ```bash
-dsh plugin --profile web add github:IcedWatermelonJuice/dsh-provider-veark
+dsh plugin --profile web add github:IcedWatermelonJuice/dsh-provider-veark --config.allowBuilds.protobufjs=false
 ```
 
 ### Option 3: local link (development)
 
 ```bash
-dsh plugin --profile web add /path_to_dsh-provider-veark
+dsh plugin --profile web add /path_to_dsh-provider-veark --config.allowBuilds.protobufjs=false
 ```
+
+> **Why `--config.allowBuilds.protobufjs=false`**: pnpm 11+ blocks dependency build scripts by default; without this flag the first install fails with `ERR_PNPM_IGNORED_BUILDS` (mentioning `protobufjs`). The flag installs protobufjs normally and only skips its build script (the package ships prebuilt artifacts; neither this plugin nor the Files API needs that script). Keep the flag on every install — no other configuration needed.
 
 > A local install is a **link-style install**: it references the source directory directly, so code changes take effect immediately; do **not** delete or move that directory while installed, or bundle resolution breaks.
 
