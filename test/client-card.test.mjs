@@ -14,7 +14,7 @@ function loadClientBundle() {
   new Function(source)();
   assert.equal(registered.length, 1);
   const { id, factory } = registered[0];
-  assert.equal(id, "dsh-provider-veark");
+  assert.equal(id, "@icedcola/dsh-provider-veark");
   const fakeReact = { createElement: (type, props) => ({ type, props, children: [] }), useState: (init) => [init, () => {}] };
   const stores = [];
   const fakeRuntime = {
