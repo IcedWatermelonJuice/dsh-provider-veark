@@ -1,6 +1,6 @@
 {
   "name": "@icedcola/dsh-provider-veark",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "火山方舟 Coding Plan LLM provider for DeepSeek Harness — 图片走 Ark Files API 优先（input_image + file_id），base64 data URL 自动兜底，Responses API 流式",
   "type": "module",
   "main": "lib/index.js",
