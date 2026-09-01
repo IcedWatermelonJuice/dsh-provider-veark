@@ -1,7 +1,7 @@
 # dsh-provider-veark · 火山方舟 Coding Plan Provider for DeepSeek Harness
 
 <p align="center">
-  中文 | <a href="README_EN.md">English</a>
+  中文 | <a href="README.en.md">English</a>
 </p>
 
 <p align="center">
@@ -75,7 +75,13 @@ dsh plugin --profile web add /path_to_dsh-provider-veark
 2. 粘贴**密钥**（火山方舟 API Key）→ **保存**。密钥写入 DSH 凭据服务，不回显、不落 settings.yaml。
 3. 完成。模型选择中出现「火山方舟 Coding Plan」（默认 `ark-code-latest`），文本、图片和 PDF 文档理解即可使用。
 
+![插件配置卡片](test/snipaste/插件配置.png)
+
 PDF 使用方法：先选择声明了 `pdf` 输入能力的模型（默认 `ark-code-latest`）。工作区内文档可直接在问题中输入 `@docs/文件.pdf`，带空格路径使用 `@"docs/my paper.pdf"`；工作区外文档点击 Composer 左侧的 **PDF** 按钮，插件会立即暂存不可变快照并向草稿追加 `@.dsh-pdf/<uuid>/<文件名>`。`/pdf` 仅保留为迁移提示。按钮仅在本插件的 `volcengine` provider 且当前模型声明 `pdf` 时显示；自定义模型默认只有 `text`，请仅在实际 endpoint 支持文档理解时手动勾选 `pdf`。
+
+![Composer 左侧的 PDF 上传按钮](test/snipaste/PDF上传按钮.png)
+
+![内置 @ 文件引用与 PDF 按钮](test/snipaste/PDF引用上传.png)
 
 卡片内可折叠调整：图片是否走云端文件服务、接口地址、图片清晰度与大小上限、PDF 本地保留天数、超时与重试、模型列表等；全部字段留空即恢复默认。
 

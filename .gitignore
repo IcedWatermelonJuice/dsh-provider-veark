@@ -2,6 +2,7 @@
 node_modules/
 .sdk-inspect/
 test/tmp/
+test/fixtures
 *.tgz
 *.log
 .DS_Store
@@ -9,3 +10,7 @@ Thumbs.db
 实施方案.md
 .pnpm-store/
 .tmp-dsh-pdf/
+.pnpm-store/
+CODEX_*.md
+DSH_*.md
+*SUPPORT_PLAN.md

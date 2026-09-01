@@ -1,6 +1,6 @@
 # DEV.md — 开发与交付说明
 
-面向插件开发/维护者。用户文档见 [README.md](./README.md) / [README_EN.md](./README_EN.md)。
+面向插件开发/维护者。用户文档见 [README.md](./README.md) / [README.en.md](./README.en.md)。
 
 ## 路线图：这个插件是怎么工作的
 

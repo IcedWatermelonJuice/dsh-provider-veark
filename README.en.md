@@ -65,7 +65,13 @@ dsh plugin --profile web add /path_to_dsh-provider-veark
 2. Paste your **API key** (Volcengine Ark API key) → **Save**. The key is stored in the DSH credentials service; it is never echoed back or written to settings.yaml.
 3. Done. "火山方舟 Coding Plan" now appears in model selection (default `ark-code-latest`); text, image, and PDF document understanding are ready.
 
+![Plugin configuration card](test/snipaste/插件配置.png)
+
 To use a PDF, select a model that declares the `pdf` input capability (the default `ark-code-latest` does). Reference a workspace document directly as `@docs/file.pdf`, or use `@"docs/my paper.pdf"` for spaces. For a document outside the workspace, click **PDF** beside the Composer; the plugin stages an immutable snapshot immediately and appends `@.dsh-pdf/<uuid>/<filename>` to the draft. `/pdf` remains only as a migration hint. The button is visible only for this plugin's `volcengine` provider when the selected model declares `pdf`. Custom models default to `text`; enable `pdf` only when their actual endpoint supports document understanding.
+
+![PDF upload button beside the Composer](test/snipaste/PDF上传按钮.png)
+
+![Built-in @ file references and the PDF button](test/snipaste/PDF引用上传.png)
 
 The card also offers collapsible sections for cloud image handling, endpoints, image limits, local PDF retention, retries, and the model list. Leave any field empty to restore its default.
 
