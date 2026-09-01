@@ -4,7 +4,7 @@
 
 ## 路线图：这个插件是怎么工作的
 
-一句话：**对话与流式解析全权交给火山官方 SDK，插件自己只做"DSH 契约 ←→ 火山协议"的翻译层、图片管线和降级状态机**。
+一句话：**对话与流式解析全权交给火山官方 SDK，插件自己只做“DSH 契约 ←→ 火山协议”的翻译层、图片管线、PDF 私有 sidecar 和降级状态机**。
 
 ```
 用户消息（DSH 会话）
@@ -24,6 +24,9 @@ lib/adapter.js ── 把 DSH 消息（含图片块、工具调用）翻译成 R
    │                        │   → {type:"input_image", file_id}（去重 + 本地索引复用）
    │                        └─ base64 模式：{type:"input_image", image_url:"data:..."}
    │
+   ├─ PDF：工作区 @相对路径（realpath 围栏）或 client 私有 Remote → UUID sidecar
+   │        → 仅 volcengine adapter 扫描普通 user text、校验后展开为 base64 input_file
+   │
    ▼
 lib/policy.js ── 压缩预算（像素/字节）、Files 可用性状态机、状态持久化
    │              （上传失败 → 标记原因 → 降级 base64 → 按间隔重探）
@@ -40,7 +43,9 @@ lib/policy.js ── 压缩预算（像素/字节）、Files 可用性状态机�
 | `pipeline.js` | 图片管线：引用收集、上传去重（并发合并 promise）、`veark-` 前缀索引复用、配额回收 |
 | `files-api.js` | Ark Files 传输层的错误分类（auth/notfound/timeout/network）、配额错误识别 |
 | `policy.js` | 图片压缩预算（总像素/单图字节/low-detail）、FilesModeController 状态机、原子持久化 |
-| `client.js` | 设置 → 插件 页的配置卡片（无构建 bundle，密钥写只读控件走 `api.credentials.set`） |
+| `pdf-store.js` | provider 私有 PDF sidecar、session/SHA-256 校验、未使用暂存/可选保留期/孤立文件清理、`vearkPdf.stage` Remote |
+| `typert.host.js` / `typert.remote-client.js` | PDF Remote 的 Host/Client 严格 Typert manifest |
+| `client.js` | 设置卡片 + 仅对 `volcengine` 中显式声明 `pdf` 的模型可见的 PDF Composer 控件与 `/pdf` 输入源 |
 
 ### 走的现有 SDK / 宿主服务（自己不写）
 
@@ -58,6 +63,9 @@ lib/policy.js ── 压缩预算（像素/字节）、Files 可用性状态机�
 - **SDK 管 wire，插件管语义**：SDK 只保证把 Responses 流接回来；DSH 要的是 StreamChunk、finish 语义、工具调用块——这层翻译（含 reasoning、tool-call、usage 映射）是 adapter 的核心工作量。
 - **图片消息零硬失败**：files 上传被拒/超时/索引失效都收敛到 base64 重试，状态机只决定"下次先试哪条路"，不让用户消息死于图片。
 - **双端点分离**：对话钉死 coding 网关（计费），files 域可切（可用性），互不牵连。
+- **PDF 不扩展 Harness 通用消息 schema**：普通 user text 中的工作区 `@相对路径.pdf` 经 realpath 围栏读取；按钮经插件私有 Remote 暂存并写入 `@.dsh-pdf/<uuid>/<name>` 不可变引用。仅本 adapter 展开为 Coding Responses `input_file`。标准 `/api/v3/files` 返回的 PDF `file_id` 已实测不被 coding endpoint 接受。
+- **cwd 安全降级**：per-session cwd 只读自 `$DSH_HOME/storages/session_projcache.json` 的 `identity.cwd`；该内部存储不可用或格式变化时，普通工作区 `@PDF` 原样放行，绝不降级到进程 cwd。绝对路径和越过工作区围栏的路径也原样放行。
+- **PDF 能力采用模型目录显式许可**：默认 `ark-code-latest` 声明 `text/image/pdf`；自定义模型默认 `text`。客户端按当前选择隐藏或拦截 PDF，adapter 再于 sidecar 读取和网络请求前按同一声明兜底拒绝，不能仅凭 provider 名推断能力。
 
 ## 目录结构
 
@@ -67,7 +75,10 @@ lib/adapter.js    Responses wire + @volcengine/ark-runtime SDK 流式 + 事件�
 lib/pipeline.js   图片管线：上传去重、file_id 索引、配额清理
 lib/files-api.js  Ark Files 传输层（uploadFile / retrieveFile / listFiles / deleteFile）
 lib/policy.js     图片预算、Files 可用性状态机、持久化
-lib/client.js     设置卡片（无构建 bundle，window.__ModuleLoader__.load）
+lib/pdf-store.js  PDF sidecar、Remote service、完整性与保留期清理
+lib/typert.*.js   PDF Remote 的双端严格 manifest
+lib/client.js     设置卡片 + PDF Composer 控件（无构建 bundle）
+test/fixtures/    Ark PDF 端到端烟雾测试文档
 test/             node:test 套件（unit / client-card / render / render-smoke）
 cordis.patch.yml  bundle patch：向宿主合成树 insert 本插件（HOST-PLANE，与 dsh-llm-deepseek 同层）
 ```
@@ -78,8 +89,9 @@ cordis.patch.yml  bundle patch：向宿主合成树 insert 本插件（HOST-PLAN
 pnpm test   # node --test test/unit.test.mjs test/client-card.test.mjs test/render.test.mjs
 ```
 
-- 全套 34 项：单元（mock ArkRuntime/Files，文本链路、图片管线、降级状态机、配置装配）+ 卡片（模型列表/暂存/密钥写）+ 真实 React 渲染（18.3.1）+ 收起态冒烟。
-- `render-smoke.test.mjs` 未纳入 `pnpm test` 脚本亦可单独跑：`node --test test/render-smoke.test.mjs`。
+- 全套 52 项：单元（文本、图片、PDF marker/工作区 `@`/虚拟 UUID 引用/围栏/sidecar/能力门控/清理/丢失/请求预算、降级状态机、配置装配）+ 客户端 PDF/设置流程 + 真实 React 渲染（18.3.1）+ 收起态冒烟。
+- `.dsh-test` 真机 profile 已验证：`/pdf` 迁移提示、按钮 UUID 虚拟引用、非 volcengine 按钮隐藏、会话日志无 base64/新 marker、Ark 返回 `ARK_PDF_SMOKE`，以及 Harness 重启后的 sidecar 恢复。此前工作区相对与带空格引用因 session cwd 下文件不存在，只覆盖了失败原文放行；现已用两个独立 turn-1 会话、两个唯一标记及发送前 cwd/存在性/SHA-256 重新验证，分别从 `@workspace-at-real.pdf` 和 `@"workspace quoted real.pdf"` 得到仅存在于真实 PDF 中的 `AT_REAL_91C7X`、`QUOTED_4F2AXY`。
+- `render-smoke.test.mjs` 已纳入 `pnpm test`。
 - 沙箱/受限环境若 `node --test` 子进程隔离 spawn EPERM，可加 `--experimental-test-isolation=none` 在进程内执行。
 
 ## 发布（GitHub）
@@ -92,17 +104,18 @@ pnpm test   # node --test test/unit.test.mjs test/client-card.test.mjs test/rend
 
 - `files-state.json`：`{mode, reason, checkedAt}` —— Files 可用性状态机（files-ok / files-unavailable(原因) / base64-only）。
 - `files-index-v1.json`：附件 → file_id 索引（去重上传 + 7 天刷新 + 配额清理，只删本插件 `veark-` 前缀文件）。
+- `../provider-veark/pdfs/<uuid>.{pdf,json}`：PDF sidecar 与 session/摘要/`usedAt` 元数据；已使用快照默认永久保留，未使用暂存和不完整孤儿按 24 小时宽限清理，`pdfRetentionDays` 可启用节流清理。
 - 状态变化写入 DSH 日志（`dsh-provider-veark:` 前缀）。
 
 ## 回退 / 禁用（最坏情况恢复手册）
 
-插件不修改任何宿主文件与 settings.yaml；全部足迹只有：profile 的 `package.json`（dependencies 与 `dsh.profile.bundles` 各一条）、`node_modules` 链接、以及 `DSH_HOME/dsh-provider-veark/` 两个状态 json。
+插件不修改任何宿主源码与 settings.yaml；足迹包括 profile 依赖/链接、`DSH_HOME/dsh-provider-veark/` 图片状态，以及 `DSH_HOME/provider-veark/pdfs/` PDF sidecar。
 
 0. **诊断**（不启动即可看合成树）：`dsh --profile web --dump-config`
 1. **软禁用**（可逆）：编辑 `profiles\web\cordis.patch.yml`，写入 `- id: dsh-provider-veark` + `disabled: true`；恢复即删。
 2. **摘除层**：从 `profiles\web\package.json` 的 `dsh.profile.bundles` 删除 `"@icedcola/dsh-provider-veark"`。
 3. **彻底卸载**：`dsh plugin --profile web remove @icedcola/dsh-provider-veark`（store 报错时加 `--store-dir D:\ProgramData\pnpm-store`）。
-4. **可选清理**：删除 `DSH_HOME\dsh-provider-veark\`。
+4. **可选清理**：删除 `DSH_HOME\dsh-provider-veark\` 和 `DSH_HOME\provider-veark\`；后者删除后历史 PDF token 不可恢复。
 5. **警告**：`link:` 安装期间不要删除/移动工作区目录，否则 bundle 解析失效；要"拷贝式"安装先卸载再以目录重新 add。
 
 ## 设计要点与主要偏差（v0.1.0 起累计）
@@ -117,6 +130,7 @@ pnpm test   # node --test test/unit.test.mjs test/client-card.test.mjs test/rend
 - **服务端拒绝 file_id 后**：失效索引并直接切 base64 重试（比原样重传 file 更符合"网关不支持 file_id 块则重传无意义"）。
 - **助手 reasoning 块不回放**：Responses 的 reasoning item 需服务端 id/encrypted_content，dsh 内容块未持久化（协议差异，非遗漏）。
 - **双端点分离**：对话走 coding 网关；图片上传域独立可配。实测（2026-08）标准域 files 端点对 coding key 可用（默认配置即用）、coding 网关 files 不可用；官方日后调整无需改代码，切换 `filesBaseURL` 即可。
+- **PDF 路径实测（2026-09）**：`/api/coding/v3/files` 为 404，标准 Files PDF `file_id` 被 coding Responses 以 400 拒绝；base64 `input_file` 可用。隔离 Harness 已完成真实 Composer → Gateway → sidecar → adapter → Ark 回复，并验证重启恢复。
 - **web「设置 → 模型」页本渠道编辑卡无可填项**：宿主硬编码 layoutOf 仅认 llm-deepseek/llm-pi-ai 家族，第三方命名空间一律如此；由本插件 client half 的 `settings.plugin.item` 卡片补足。
 - **`link:` 开发安装下**，插件解析到工作区自己的 @deepseek-ai/* 副本；宿主对 LlmError 仅两处 instanceof，最坏影响是 turn 级错误 code 显示 UNKNOWN，功能性路由走 `.code` duck-typing 不受影响（"route on code, never on the prototype chain"）。
 - **密钥安全**：原因串仅含分类事实（kind/HTTP status/code），凭据经 assertUsableApiKey 且不进消息/日志/导出。

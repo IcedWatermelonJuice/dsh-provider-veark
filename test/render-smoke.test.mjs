@@ -20,13 +20,14 @@ test("collapsible card renders with built-in chrome", () => {
   const exports = loadClientBundle();
   const ctx = { card: null, get: () => undefined, remote: { $on: () => () => {} } };
   ctx.effect = (fn) => fn();
+  ctx.inject = (names, callback) => callback(ctx);
   ctx.locale = { bind: () => (k) => k, register: () => {} };
   const scope = { value: { preferFiles: true }, base: {}, user: {}, status: "ready", writable: true };
   ctx.settingsScope = { bind: () => ({ getSnapshot: () => ({ status: "ready", writable: true, value: scope.value, base: {}, user: {} }), subscribe: () => () => {}, set: async () => {}, unset: async () => {} }) };
   ctx.slots = { inject: (name, thunk) => { for (const r of thunk()) ctx.card = r; }, register: (options, component) => ({ options, component }) };
   exports.apply(ctx);
   const fields = {};
-  for (const f of ["preferFiles","apiKeyEnv","chatBaseURL","filesBaseURL","filesApiKeyEnv","requestImagePixelBudget","requestImageMaxBytes","fileExpirySeconds","filesApiTimeoutMs","filesProbeIntervalMs"]) fields[f] = f === "preferFiles" ? { checked: true, overridden: false, invalid: false } : { text: "", overridden: false, invalid: false };
+  for (const f of ["preferFiles","apiKeyEnv","chatBaseURL","filesBaseURL","filesApiKeyEnv","requestImagePixelBudget","requestImageMaxBytes","fileExpirySeconds","filesApiTimeoutMs","filesProbeIntervalMs","pdfRetentionDays"]) fields[f] = f === "preferFiles" ? { checked: true, overridden: false, invalid: false } : { text: "", overridden: false, invalid: false };
   const props = { t: (k) => k, useVearkCard: (sel) => sel({ available: true, writable: true, dirty: false, invalid: false, saving: false, failed: false, fields, keyValue: { text: "", overridden: false, invalid: false }, keyRef: "ARK_API_KEY", keyConfigured: false, keyWritable: true, models: [], modelsInvalid: false }), edit() {}, editBool() {}, resetField() {}, editModels() {}, addModel() {}, removeModel() {}, save() {}, discard() {}, specsOf() { return {}; } };
   const card = ctx.card.component;
   const li = card(props);
