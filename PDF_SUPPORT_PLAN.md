@@ -111,6 +111,8 @@ PDF attachment (document.pdf): [[dsh-provider-veark:pdf:<uuid>]]
   - 输出 `input_file + filename + file_data`；
   - token 不会进入方舟请求；
   - 累计 PDF 输入超过 45 MiB 时明确拒绝。
+  - 默认 `ark-code-latest` 显式声明 `inputModalities: ["text", "image", "pdf"]`；
+  - adapter 在读取 sidecar 或访问 Ark 前按当前模型声明检查 `pdf` 能力，未声明时返回 `UNSUPPORTED_CONTENT`。
 - 修改 `lib/index.js`：
   - PDF store/service 和 `volcengine` adapter 绑定；
   - 未修改 Harness 本身。
@@ -119,6 +121,8 @@ PDF attachment (document.pdf): [[dsh-provider-veark:pdf:<uuid>]]
   - 初步加入 `/pdf` 输入源、文件选择和私有 Remote 上传流程；
   - 真实 Composer 提交发现 Harness 要求精确声明远程命名空间，已把 `remote.vearkPdf` 加入客户端 inject，并增加回归断言。
   - 顶层精确 inject 会与 Remote 自举形成等待环，已改为“先通过顶层 `remote` 挂载 contribution，再用 `ctx.inject(["remote.vearkPdf"], ...)` 注册 PDF 输入功能”的两阶段生命周期；隔离 Harness 已验证能够正常启动。
+  - 模型设置 UI 已增加 `pdf` 能力复选框；自定义模型默认不继承 PDF 能力；
+  - PDF 按钮、命令候选、Enter claim 和提交均同时检查 provider 与当前模型的 `pdf` 声明。
 - 修改 `package.json` 和 `pnpm-lock.yaml`：
   - 声明 Typert host/remote exports；
   - 增加 zod v4 和 Typert protocol 依赖。
@@ -128,12 +132,13 @@ PDF attachment (document.pdf): [[dsh-provider-veark:pdf:<uuid>]]
   - sidecar session 隔离；
   - PDF magic、大小和完整性校验。
   - PDF sidecar 可选保留期和孤立文件清理。
+  - 同一 provider 内未声明 `pdf` 的模型会在解析 sidecar 和请求 Ark 前被拒绝。
 - 新增客户端 PDF 流程测试：
   - 私有 Typert Remote contribution 挂载；
   - 浏览器选取 PDF 并生成 `/pdf` 草稿；
   - `/pdf` claim 上传 sidecar token，再调用标准 `session.prompt()`；
-  - provider 切换为非 `volcengine` 后不再返回 PDF 候选。
-- 当前测试结果：41 个测试全部通过。
+  - provider 切换为非 `volcengine`，或切换到同 provider 下未声明 `pdf` 的模型后，不再返回 PDF 候选或 claim。
+- 当前测试结果：43 个测试全部通过；新增模型能力声明、客户端门控和 adapter 兜底覆盖。
 - 完成临时 DeepSeek Harness profile 装载检查：
   - 使用隔离的 `$DSH_HOME` 和 `pdf-test` profile，本地 link 安装当前分支；
   - `--dump-config` 确认插件只作为独立 `dsh-provider-veark` Host 层插入；
@@ -197,6 +202,15 @@ PDF attachment (document.pdf): [[dsh-provider-veark:pdf:<uuid>]]
    - `package.json` 已按新增模态能力从 0.1.11 更新为 0.2.0；
    - 本轮变更在 `codex/pdf-support` 独立提交；没有合并到 main，也没有发布 npm 包。
 
+8. **模型级 PDF 能力门控（后续审查补强）**
+   - 已把 `pdf` 加入插件模型目录允许的 `inputModalities`，默认 `ark-code-latest` 声明 `text/image/pdf`；
+   - 新增的自定义模型仍默认只有 `text`，不会因属于 `volcengine` provider 自动获得 PDF 权限；
+   - 模型配置卡已提供 `pdf` 复选框，供 endpoint 能力经过确认后显式开启；
+   - Composer 按钮和 `/pdf` 候选均按当前模型声明启用；切到同 provider 的 `text/image` 模型会立即隐藏；
+   - 已选择 PDF 后再切到不支持模型时，`/pdf` 仍由插件认领并返回明确错误，不会退化成普通文本误发；
+   - adapter 会在读取 sidecar、解析 base64 或请求 Ark 前再次核验模型声明，防止旧会话重放或绕过客户端；
+   - 已增加对应单元与客户端回归测试，完整测试现为 43/43。
+
 ## 6. 建议的后续执行顺序
 
 1. ~~先审查当前 diff，重点检查客户端 Remote mount 和 Typert service 生命周期。~~ 已完成。
@@ -215,6 +229,8 @@ PDF attachment (document.pdf): [[dsh-provider-veark:pdf:<uuid>]]
 
 - Harness 核心代码零修改；
 - PDF 控件仅对 `volcengine` provider 可见；
+- PDF 控件仅在当前模型目录显式声明 `pdf` 能力时可见；
+- adapter 对旧消息重放和绕过客户端的 PDF marker 执行同样的模型能力兜底检查；
 - PDF 原始数据不会交给其他 provider；
 - 模型请求只访问 `/api/coding/v3/responses`；
 - 不调用 TOS；

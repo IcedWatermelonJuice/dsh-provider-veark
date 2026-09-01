@@ -75,7 +75,7 @@ dsh plugin --profile web add /path_to_dsh-provider-veark
 2. 粘贴**密钥**（火山方舟 API Key）→ **保存**。密钥写入 DSH 凭据服务，不回显、不落 settings.yaml。
 3. 完成。模型选择中出现「火山方舟 Coding Plan」（默认 `ark-code-latest`），文本、图片和 PDF 文档理解即可使用。
 
-PDF 使用方法：先选择 `ark-code-latest`，点击 Composer 左侧的 **PDF** 按钮并选择文档，在自动生成的 `/pdf` 后输入问题，再按一次 Enter。PDF 按钮只会在本插件的 `volcengine` provider 下显示。
+PDF 使用方法：先选择声明了 `pdf` 输入能力的模型（默认 `ark-code-latest`），点击 Composer 左侧的 **PDF** 按钮并选择文档，在自动生成的 `/pdf` 后输入问题，再按一次 Enter。PDF 按钮仅在本插件的 `volcengine` provider 且当前模型声明 `pdf` 时显示；自定义模型默认只有 `text`，请仅在其实际 endpoint 支持文档理解时手动勾选 `pdf`。
 
 卡片内可折叠调整：图片是否走云端文件服务、接口地址、图片清晰度与大小上限、PDF 本地保留天数、超时与重试、模型列表等；全部字段留空即恢复默认。
 
@@ -95,7 +95,7 @@ dsh-provider-veark:
   #     name: Ark Code Latest
   #     contextWindow: 1000000
   #     maxTokens: 128000
-  #     inputModalities: ["text", "image"]
+  #     inputModalities: ["text", "image", "pdf"]
   #     imagePixelBudget: 640000
   #     imageMaxBytes: 1048576
   # requestImagePixelBudget: 640000

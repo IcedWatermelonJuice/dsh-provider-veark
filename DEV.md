@@ -45,7 +45,7 @@ lib/policy.js ── 压缩预算（像素/字节）、Files 可用性状态机�
 | `policy.js` | 图片压缩预算（总像素/单图字节/low-detail）、FilesModeController 状态机、原子持久化 |
 | `pdf-store.js` | provider 私有 PDF sidecar、session/SHA-256 校验、可选保留期和孤立文件清理、`vearkPdf.stage` Remote |
 | `typert.host.js` / `typert.remote-client.js` | PDF Remote 的 Host/Client 严格 Typert manifest |
-| `client.js` | 设置卡片 + 仅 `volcengine` 可见的 PDF Composer 控件与 `/pdf` 输入源 |
+| `client.js` | 设置卡片 + 仅对 `volcengine` 中显式声明 `pdf` 的模型可见的 PDF Composer 控件与 `/pdf` 输入源 |
 
 ### 走的现有 SDK / 宿主服务（自己不写）
 
@@ -64,6 +64,7 @@ lib/policy.js ── 压缩预算（像素/字节）、Files 可用性状态机�
 - **图片消息零硬失败**：files 上传被拒/超时/索引失效都收敛到 base64 重试，状态机只决定"下次先试哪条路"，不让用户消息死于图片。
 - **双端点分离**：对话钉死 coding 网关（计费），files 域可切（可用性），互不牵连。
 - **PDF 不扩展 Harness 通用消息 schema**：浏览器只经插件私有 Remote 暂存 PDF，会话记录随机 token；仅本 adapter 展开为 Coding Responses `input_file`。标准 `/api/v3/files` 返回的 PDF `file_id` 已实测不被 coding endpoint 接受。
+- **PDF 能力采用模型目录显式许可**：默认 `ark-code-latest` 声明 `text/image/pdf`；自定义模型默认 `text`。客户端按当前选择隐藏或拦截 PDF，adapter 再于 sidecar 读取和网络请求前按同一声明兜底拒绝，不能仅凭 provider 名推断能力。
 
 ## 目录结构
 
@@ -87,7 +88,7 @@ cordis.patch.yml  bundle patch：向宿主合成树 insert 本插件（HOST-PLAN
 pnpm test   # node --test test/unit.test.mjs test/client-card.test.mjs test/render.test.mjs
 ```
 
-- 全套 41 项：单元（文本、图片、PDF marker/sidecar/清理/丢失、降级状态机、配置装配）+ 客户端 PDF/设置流程 + 真实 React 渲染（18.3.1）+ 收起态冒烟。
+- 全套 43 项：单元（文本、图片、PDF marker/sidecar/能力门控/清理/丢失、降级状态机、配置装配）+ 客户端 PDF/设置流程 + 真实 React 渲染（18.3.1）+ 收起态冒烟。
 - `render-smoke.test.mjs` 已纳入 `pnpm test`。
 - 沙箱/受限环境若 `node --test` 子进程隔离 spawn EPERM，可加 `--experimental-test-isolation=none` 在进程内执行。
 

@@ -34,7 +34,7 @@ function makeAdapter({ responsesClient, client, preferFiles = true, mode, tmp, m
 			name: "Ark Code Latest",
 			contextWindow: 1000000,
 			maxTokens: 128000,
-			inputModalities: ["text", "image"],
+			inputModalities: ["text", "image", "pdf"],
 			imagePixelBudget: 640000,
 			imageMaxBytes: 1048576
 		}],
@@ -180,7 +180,7 @@ describe("resolveModel / 目录契约", () => {
 		assert.equal(info.provider, "volcengine");
 		assert.equal(info.id, "ark-code-latest");
 		assert.equal(info.name, "Ark Code Latest");
-		assert.deepEqual(info.inputModalities, ["text", "image"]);
+		assert.deepEqual(info.inputModalities, ["text", "image", "pdf"]);
 		assert.equal(info.context.contextWindow, 1000000);
 		assert.equal(info.defaultMaxTokens, 128000);
 		assert.deepEqual(info.reasoning.efforts.map((e) => e.id), ["minimal", "low", "medium", "high"]);
@@ -192,12 +192,12 @@ describe("resolveModel / 目录契约", () => {
 		assert.deepEqual(info.inputModalities, ["text"]);
 		assert.equal(info.defaultMaxTokens, 128000);
 	});
-	test("listModels 含图片模态声明（能力门依赖）", async () => {
+	test("listModels 公开图片与 PDF 模态声明（能力门依赖）", async () => {
 		const adapter = makeAdapter({});
 		const models = await adapter.listModels("volcengine");
 		assert.ok(models.every((m) => m.provider === "volcengine"));
 		const ark = models.find((m) => m.id === "ark-code-latest");
-		assert.deepEqual(ark.inputModalities, ["text", "image"]);
+		assert.deepEqual(ark.inputModalities, ["text", "image", "pdf"]);
 	});
 	test("listModels 包含 UI 新增的模型", async () => {
 		const adapter = makeAdapter({
@@ -322,6 +322,18 @@ describe("文本链路（无图）", () => {
 		assert.equal(file.filename, "spec.pdf");
 		assert.equal(file.file_data, `data:application/pdf;base64,${pdf.toString("base64")}`);
 		assert.equal(JSON.stringify(content).includes("dsh-provider-veark:pdf"), false);
+	});
+	test("模型未声明 pdf 时在解析 sidecar 和请求 Ark 前拒绝", async () => {
+		const responses = fakeResponsesClient({ events: [COMPLETED] });
+		let resolved = false;
+		const adapter = makeAdapter({
+			responsesClient: responses,
+			models: [{ id: "text-image-model", name: "Text Image", contextWindow: 1000000, maxTokens: 128000, inputModalities: ["text", "image"] }],
+			resolvePdf: async () => { resolved = true; throw new Error("must not resolve"); }
+		});
+		await assert.rejects(collect(adapter.stream({ sessionId: "session-pdf", model: "text-image-model", messages: [userText("[[dsh-provider-veark:pdf:123e4567-e89b-42d3-a456-426614174000]]")] })), (error) => error.code === "UNSUPPORTED_CONTENT" && /does not accept PDF input/u.test(error.message));
+		assert.equal(resolved, false);
+		assert.equal(responses.state.bodies.length, 0);
 	});
 	test("历史 PDF sidecar 丢失时返回可识别的 UNSUPPORTED_CONTENT", async () => {
 		const token = "123e4567-e89b-42d3-a456-426614174000";
@@ -572,13 +584,13 @@ describe("降级状态机", () => {
 });
 
 describe("配置与装配", () => {
-	test("Config 默认值：模型目录含 ark-code-latest 且声明图片模态", () => {
+	test("Config 默认值：ark-code-latest 显式声明文本、图片和 PDF 模态", () => {
 		const resolved = Config({});
 		assert.equal(resolved.apiKeyEnv, "ARK_API_KEY");
 		assert.equal(resolved.preferFiles, true);
 		assert.equal(resolved.pdfRetentionDays, 0);
 		const ark = resolved.models.find((m) => m.id === "ark-code-latest");
-		assert.deepEqual(ark.inputModalities, ["text", "image"]);
+		assert.deepEqual(ark.inputModalities, ["text", "image", "pdf"]);
 		assert.equal(ark.contextWindow, 1000000);
 		assert.equal(ark.maxTokens, 128000);
 	});
@@ -590,6 +602,12 @@ describe("配置与装配", () => {
 		assert.deepEqual(model.inputModalities, ["text", "image"]);
 		assert.equal(model.imagePixelBudget, 640000, "图片模型缺省图片预算应自动填充");
 		assert.equal(model.imageMaxBytes, 1048576);
+	});
+	test("resolveAdapterOptions 接受显式 pdf 能力且自定义模型默认不继承", () => {
+		const pdf = resolveAdapterOptions({ models: [{ id: "pdf-model", name: "PDF", contextWindow: 1000000, maxTokens: 128000, inputModalities: ["text", "pdf"] }] });
+		assert.deepEqual(pdf.models[0].inputModalities, ["text", "pdf"]);
+		const custom = resolveAdapterOptions({ models: [{ id: "custom", name: "Custom", contextWindow: 1000000, maxTokens: 128000 }] });
+		assert.deepEqual(custom.models[0].inputModalities, ["text"]);
 	});
 	test("resolveAdapterOptions 边界校验", () => {
 		assert.throws(() => resolveAdapterOptions({ fileExpirySeconds: 10 }), /fileExpirySeconds/);

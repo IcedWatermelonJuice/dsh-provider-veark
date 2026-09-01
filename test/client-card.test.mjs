@@ -136,7 +136,7 @@ describe("client 卡片", () => {
       assert.equal(initial[0].name, "Ark Code Latest");
       assert.equal(initial[0].contextWindow, 1000000);
       assert.equal(initial[0].maxTokens, 128000);
-      assert.deepEqual(initial[0].inputModalities, ["text", "image"]);
+      assert.deepEqual(initial[0].inputModalities, ["text", "image", "pdf"]);
       bag.removeModel(0);
       assert.equal(bag.hooks.vearkCard.getSnapshot().models.length, 1, "默认模型不可删除");
       bag.addModel();
@@ -246,6 +246,17 @@ test("PDF 客户端链路只在 volcengine 下挂载并通过私有 Remote 提�
     const pdfSlot = slots.find((entry) => entry.name === "conversation.input.left");
     assert.ok(pdfSlot);
     const bag = pdfSlot.registration.options.inject("session-pdf");
+    const renderButton = () => pdfSlot.registration.component({
+      ...bag,
+      useVearkModel: (select) => select(modelState),
+      useVearkSettings: (select) => select(scope.getSnapshot()),
+      useVearkPdf: (select) => select(bag.hooks.vearkPdf.getSnapshot()),
+      session: { removed: false },
+      input: { phase: "idle", draft: "" },
+      inputActions: {},
+      t: (key) => key
+    });
+    assert.notEqual(renderButton(), null, "默认模型声明 pdf 时显示按钮");
     await bag.choosePdf("总结接口", { setDraft(value) { draft = value; } });
     await changePromise;
     assert.equal(draft, "/pdf 总结接口");
@@ -254,6 +265,16 @@ test("PDF 客户端链路只在 volcengine 下挂载并通过私有 Remote 提�
     assert.deepEqual(submitted, { kind: "success" });
     assert.equal(prompt.mode, "queue");
     assert.match(prompt.content[0].text, /\[\[dsh-provider-veark:pdf:123e4567/u);
+    scope.value = { ...scope.value, models: [
+      { id: "ark-code-latest", name: "Ark Code Latest", contextWindow: 1000000, maxTokens: 128000, inputModalities: ["text", "image", "pdf"] },
+      { id: "image-only", name: "Image only", contextWindow: 1000000, maxTokens: 128000, inputModalities: ["text", "image"] }
+    ] };
+    modelState.current = { provider: "volcengine", model: "image-only" };
+    assert.equal(renderButton(), null, "同 provider 下未声明 pdf 时隐藏按钮");
+    assert.deepEqual(await source.candidates({ sessionId: "session-pdf" }, { query: "pdf" }), [], "同 provider 下未声明 pdf 的模型不得显示候选");
+    const blocked = await source.matchEnter({ sessionId: "session-pdf" }, "/pdf test");
+    assert.ok(blocked && blocked.claim, "同 provider 下的 /pdf 仍须被输入源认领并明确拦截");
+    assert.deepEqual(await blocked.claim.submit("test", {}), { kind: "error", text: "pdfModelUnsupported" });
     modelState.current = { provider: "deepseek", model: "deepseek-chat" };
     assert.deepEqual(await source.candidates({ sessionId: "session-pdf" }, { query: "pdf" }), []);
   } finally {
