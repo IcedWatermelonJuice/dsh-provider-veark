@@ -24,8 +24,8 @@ lib/adapter.js ── 把 DSH 消息（含图片块、工具调用）翻译成 R
    │                        │   → {type:"input_image", file_id}（去重 + 本地索引复用）
    │                        └─ base64 模式：{type:"input_image", image_url:"data:..."}
    │
-   ├─ PDF：client 私有 Remote → lib/pdf-store.js sidecar → 会话 token
-   │        → 仅 volcengine adapter 校验 session/SHA-256 后展开为 base64 input_file
+   ├─ PDF：工作区 @相对路径（realpath 围栏）或 client 私有 Remote → UUID sidecar
+   │        → 仅 volcengine adapter 扫描普通 user text、校验后展开为 base64 input_file
    │
    ▼
 lib/policy.js ── 压缩预算（像素/字节）、Files 可用性状态机、状态持久化
@@ -43,7 +43,7 @@ lib/policy.js ── 压缩预算（像素/字节）、Files 可用性状态机�
 | `pipeline.js` | 图片管线：引用收集、上传去重（并发合并 promise）、`veark-` 前缀索引复用、配额回收 |
 | `files-api.js` | Ark Files 传输层的错误分类（auth/notfound/timeout/network）、配额错误识别 |
 | `policy.js` | 图片压缩预算（总像素/单图字节/low-detail）、FilesModeController 状态机、原子持久化 |
-| `pdf-store.js` | provider 私有 PDF sidecar、session/SHA-256 校验、可选保留期和孤立文件清理、`vearkPdf.stage` Remote |
+| `pdf-store.js` | provider 私有 PDF sidecar、session/SHA-256 校验、未使用暂存/可选保留期/孤立文件清理、`vearkPdf.stage` Remote |
 | `typert.host.js` / `typert.remote-client.js` | PDF Remote 的 Host/Client 严格 Typert manifest |
 | `client.js` | 设置卡片 + 仅对 `volcengine` 中显式声明 `pdf` 的模型可见的 PDF Composer 控件与 `/pdf` 输入源 |
 
@@ -63,7 +63,8 @@ lib/policy.js ── 压缩预算（像素/字节）、Files 可用性状态机�
 - **SDK 管 wire，插件管语义**：SDK 只保证把 Responses 流接回来；DSH 要的是 StreamChunk、finish 语义、工具调用块——这层翻译（含 reasoning、tool-call、usage 映射）是 adapter 的核心工作量。
 - **图片消息零硬失败**：files 上传被拒/超时/索引失效都收敛到 base64 重试，状态机只决定"下次先试哪条路"，不让用户消息死于图片。
 - **双端点分离**：对话钉死 coding 网关（计费），files 域可切（可用性），互不牵连。
-- **PDF 不扩展 Harness 通用消息 schema**：浏览器只经插件私有 Remote 暂存 PDF，会话记录随机 token；仅本 adapter 展开为 Coding Responses `input_file`。标准 `/api/v3/files` 返回的 PDF `file_id` 已实测不被 coding endpoint 接受。
+- **PDF 不扩展 Harness 通用消息 schema**：普通 user text 中的工作区 `@相对路径.pdf` 经 realpath 围栏读取；按钮经插件私有 Remote 暂存并写入 `@.dsh-pdf/<uuid>/<name>` 不可变引用。仅本 adapter 展开为 Coding Responses `input_file`。标准 `/api/v3/files` 返回的 PDF `file_id` 已实测不被 coding endpoint 接受。
+- **cwd 安全降级**：per-session cwd 只读自 `$DSH_HOME/storages/session_projcache.json` 的 `identity.cwd`；该内部存储不可用或格式变化时，普通工作区 `@PDF` 原样放行，绝不降级到进程 cwd。绝对路径和越过工作区围栏的路径也原样放行。
 - **PDF 能力采用模型目录显式许可**：默认 `ark-code-latest` 声明 `text/image/pdf`；自定义模型默认 `text`。客户端按当前选择隐藏或拦截 PDF，adapter 再于 sidecar 读取和网络请求前按同一声明兜底拒绝，不能仅凭 provider 名推断能力。
 
 ## 目录结构
@@ -88,7 +89,8 @@ cordis.patch.yml  bundle patch：向宿主合成树 insert 本插件（HOST-PLAN
 pnpm test   # node --test test/unit.test.mjs test/client-card.test.mjs test/render.test.mjs
 ```
 
-- 全套 43 项：单元（文本、图片、PDF marker/sidecar/能力门控/清理/丢失、降级状态机、配置装配）+ 客户端 PDF/设置流程 + 真实 React 渲染（18.3.1）+ 收起态冒烟。
+- 全套 52 项：单元（文本、图片、PDF marker/工作区 `@`/虚拟 UUID 引用/围栏/sidecar/能力门控/清理/丢失/请求预算、降级状态机、配置装配）+ 客户端 PDF/设置流程 + 真实 React 渲染（18.3.1）+ 收起态冒烟。
+- `.dsh-test` 真机 profile 已验证：`/pdf` 迁移提示、按钮 UUID 虚拟引用、非 volcengine 按钮隐藏、会话日志无 base64/新 marker、Ark 返回 `ARK_PDF_SMOKE`，以及 Harness 重启后的 sidecar 恢复。此前工作区相对与带空格引用因 session cwd 下文件不存在，只覆盖了失败原文放行；现已用两个独立 turn-1 会话、两个唯一标记及发送前 cwd/存在性/SHA-256 重新验证，分别从 `@workspace-at-real.pdf` 和 `@"workspace quoted real.pdf"` 得到仅存在于真实 PDF 中的 `AT_REAL_91C7X`、`QUOTED_4F2AXY`。
 - `render-smoke.test.mjs` 已纳入 `pnpm test`。
 - 沙箱/受限环境若 `node --test` 子进程隔离 spawn EPERM，可加 `--experimental-test-isolation=none` 在进程内执行。
 
@@ -102,7 +104,7 @@ pnpm test   # node --test test/unit.test.mjs test/client-card.test.mjs test/rend
 
 - `files-state.json`：`{mode, reason, checkedAt}` —— Files 可用性状态机（files-ok / files-unavailable(原因) / base64-only）。
 - `files-index-v1.json`：附件 → file_id 索引（去重上传 + 7 天刷新 + 配额清理，只删本插件 `veark-` 前缀文件）。
-- `../provider-veark/pdfs/<uuid>.{pdf,json}`：PDF sidecar 与 session/摘要元数据；默认永久保留，`pdfRetentionDays` 可启用节流清理。
+- `../provider-veark/pdfs/<uuid>.{pdf,json}`：PDF sidecar 与 session/摘要/`usedAt` 元数据；已使用快照默认永久保留，未使用暂存和不完整孤儿按 24 小时宽限清理，`pdfRetentionDays` 可启用节流清理。
 - 状态变化写入 DSH 日志（`dsh-provider-veark:` 前缀）。
 
 ## 回退 / 禁用（最坏情况恢复手册）

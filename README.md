@@ -75,7 +75,7 @@ dsh plugin --profile web add /path_to_dsh-provider-veark
 2. 粘贴**密钥**（火山方舟 API Key）→ **保存**。密钥写入 DSH 凭据服务，不回显、不落 settings.yaml。
 3. 完成。模型选择中出现「火山方舟 Coding Plan」（默认 `ark-code-latest`），文本、图片和 PDF 文档理解即可使用。
 
-PDF 使用方法：先选择声明了 `pdf` 输入能力的模型（默认 `ark-code-latest`），点击 Composer 左侧的 **PDF** 按钮并选择文档，在自动生成的 `/pdf` 后输入问题，再按一次 Enter。PDF 按钮仅在本插件的 `volcengine` provider 且当前模型声明 `pdf` 时显示；自定义模型默认只有 `text`，请仅在其实际 endpoint 支持文档理解时手动勾选 `pdf`。
+PDF 使用方法：先选择声明了 `pdf` 输入能力的模型（默认 `ark-code-latest`）。工作区内文档可直接在问题中输入 `@docs/文件.pdf`，带空格路径使用 `@"docs/my paper.pdf"`；工作区外文档点击 Composer 左侧的 **PDF** 按钮，插件会立即暂存不可变快照并向草稿追加 `@.dsh-pdf/<uuid>/<文件名>`。`/pdf` 仅保留为迁移提示。按钮仅在本插件的 `volcengine` provider 且当前模型声明 `pdf` 时显示；自定义模型默认只有 `text`，请仅在实际 endpoint 支持文档理解时手动勾选 `pdf`。
 
 卡片内可折叠调整：图片是否走云端文件服务、接口地址、图片清晰度与大小上限、PDF 本地保留天数、超时与重试、模型列表等；全部字段留空即恢复默认。
 
@@ -131,7 +131,8 @@ dsh plugin --profile web remove @icedcola/dsh-provider-veark
 ## 已知边界
 
 - 单个 PDF 和每次请求内累计 PDF 原始大小上限均为 45 MiB，为方舟 50 MB 文件限制与 64 MB 整体请求限制预留编码开销。
-- PDF sidecar 默认保存在 `%DSH_HOME%\provider-veark\pdfs\` 且不自动删除；可设置 `pdfRetentionDays`，但清理后旧会话无法再读取对应 PDF。
+- PDF 按钮产生的 sidecar 默认保存在 `%DSH_HOME%\provider-veark\pdfs\`：已经使用的快照默认永久保留，未被消息使用的暂存项和不完整孤儿会在 24 小时宽限后清理；可设置 `pdfRetentionDays` 清理已使用快照，但清理后旧会话无法再读取对应 PDF。
+- 普通 `@路径.pdf` 只会读取当前会话工作区围栏内的相对路径；绝对路径和越界路径保持普通文本，不会由 adapter 自动读取或外发。工作区文件按每次请求的当前内容读取，按钮 sidecar 则是选择时的不可变快照。
 - 仅导出/迁移会话 JSONL 不会携带 PDF sidecar；跨机器恢复时需同时迁移该目录。
 - 助手历史中的 reasoning 块不回放（Responses 协议限制）。
 - 不支持视频、音频或 TOS 直传。

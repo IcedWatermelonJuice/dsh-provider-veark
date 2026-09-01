@@ -15,7 +15,7 @@ function loadClientBundle() {
   assert.equal(registered.length, 1);
   const { id, factory } = registered[0];
   assert.equal(id, "@icedcola/dsh-provider-veark");
-  const fakeReact = { createElement: (type, props) => ({ type, props, children: [] }), useState: (init) => [init, () => {}] };
+  const fakeReact = { createElement: (type, props, ...children) => ({ type, props, children }), useState: (init) => [init, () => {}] };
   const stores = [];
   const fakeRuntime = {
     createSnapshotStore(initial) {
@@ -192,7 +192,7 @@ describe("client 卡片", () => {
   });
 });
 
-test("PDF 客户端链路只在 volcengine 下挂载并通过私有 Remote 提交 token", async () => {
+test("PDF 客户端按钮立即暂存并插入不可变虚拟 @ 引用，/pdf 仅提示迁移", async () => {
   const { exports } = loadClientBundle();
   const scope = makeScope();
   const credentialLog = { sets: [] };
@@ -200,16 +200,14 @@ test("PDF 客户端链路只在 volcengine 下挂载并通过私有 Remote 提�
   const slots = [];
   let source;
   let mounted;
-  let prompt;
   let draft;
   let changePromise;
   const modelState = { current: { provider: "volcengine", model: "ark-code-latest" }, status: "ready" };
   const modelStore = { getSnapshot: () => modelState, subscribe: () => () => {} };
-  const session = { prompt: async (content, mode) => { prompt = { content, mode }; return { ok: true, value: { accepted: true } }; } };
   const services = {
     connection: ctx.connection,
     remote: ctx.remote,
-    sessions: { sessionOf: () => session },
+    sessions: { sessionOf: () => void 0 },
     inputTriggers: { registerSource(value) { source = value; return () => {}; } },
     modelDirectories: { directoryFor: () => ({ store: modelStore, load: async () => modelState }) }
   };
@@ -230,7 +228,7 @@ test("PDF 客户端链路只在 volcengine 下挂载并通过私有 Remote 提�
     createElement(tag) {
       assert.equal(tag, "input");
       const picker = {
-        files: [{ name: "spec.pdf", size: 15, arrayBuffer: async () => Uint8Array.from(Buffer.from("%PDF-1.4\n%%EOF\n")).buffer }],
+        files: [{ name: "spec 中文.pdf", size: 15, arrayBuffer: async () => Uint8Array.from(Buffer.from("%PDF-1.4\n%%EOF\n")).buffer }],
         style: {},
         click() { changePromise = picker.onchange(); }
       };
@@ -256,27 +254,35 @@ test("PDF 客户端链路只在 volcengine 下挂载并通过私有 Remote 提�
       inputActions: {},
       t: (key) => key
     });
-    assert.notEqual(renderButton(), null, "默认模型声明 pdf 时显示按钮");
+    const initialButton = renderButton();
+    assert.notEqual(initialButton, null, "默认模型声明 pdf 时显示按钮");
+    assert.equal(initialButton.type, "span");
+    assert.equal(initialButton.props.className, "dshVearkPdf_wrap");
+    assert.equal(initialButton.children[0].props.className, "dshVearkPdf_button");
+    assert.equal(initialButton.children[0].props.title, undefined, "使用宿主风格 tooltip，不保留浏览器原生 title");
+    assert.equal(initialButton.children[0].children[0].type, "svg", "按钮使用内联 PDF SVG，而非文字");
+    assert.equal(initialButton.children[0].children[0].props["aria-hidden"], "true");
+    assert.equal(initialButton.children[0].children[0].props.viewBox, "0 0 1024 1024", "使用指定 Iconfont PDF 图标");
+    assert.equal(initialButton.children[0].children[0].children[0].props.fill, "currentColor", "图标跟随宿主主题颜色");
+    assert.equal(initialButton.children[0].children.some((child) => typeof child === "string"), false, "按钮内部不渲染 PDF 文字");
     await bag.choosePdf("总结接口", { setDraft(value) { draft = value; } });
     await changePromise;
-    assert.equal(draft, "/pdf 总结接口");
-    const outcome = await source.matchEnter({ sessionId: "session-pdf" }, draft);
+    assert.equal(draft, "总结接口 @.dsh-pdf/123e4567-e89b-42d3-a456-426614174000/spec%20%E4%B8%AD%E6%96%87.pdf");
+    const outcome = await source.matchEnter({ sessionId: "session-pdf" }, "/pdf 总结接口");
     const submitted = await outcome.claim.submit("总结接口", {});
-    assert.deepEqual(submitted, { kind: "success" });
-    assert.equal(prompt.mode, "queue");
-    assert.match(prompt.content[0].text, /\[\[dsh-provider-veark:pdf:123e4567/u);
+    assert.deepEqual(submitted, { kind: "error", text: "pdfClaimHint" });
     scope.value = { ...scope.value, models: [
       { id: "ark-code-latest", name: "Ark Code Latest", contextWindow: 1000000, maxTokens: 128000, inputModalities: ["text", "image", "pdf"] },
       { id: "image-only", name: "Image only", contextWindow: 1000000, maxTokens: 128000, inputModalities: ["text", "image"] }
     ] };
     modelState.current = { provider: "volcengine", model: "image-only" };
     assert.equal(renderButton(), null, "同 provider 下未声明 pdf 时隐藏按钮");
-    assert.deepEqual(await source.candidates({ sessionId: "session-pdf" }, { query: "pdf" }), [], "同 provider 下未声明 pdf 的模型不得显示候选");
+    assert.equal((await source.candidates({ sessionId: "session-pdf" }, { query: "pdf" })).length, 1, "/pdf 迁移提示不依赖模型能力");
     const blocked = await source.matchEnter({ sessionId: "session-pdf" }, "/pdf test");
-    assert.ok(blocked && blocked.claim, "同 provider 下的 /pdf 仍须被输入源认领并明确拦截");
-    assert.deepEqual(await blocked.claim.submit("test", {}), { kind: "error", text: "pdfModelUnsupported" });
+    assert.ok(blocked && blocked.claim, "同 provider 下的 /pdf 仍须被输入源认领并提示迁移");
+    assert.deepEqual(await blocked.claim.submit("test", {}), { kind: "error", text: "pdfClaimHint" });
     modelState.current = { provider: "deepseek", model: "deepseek-chat" };
-    assert.deepEqual(await source.candidates({ sessionId: "session-pdf" }, { query: "pdf" }), []);
+    assert.equal((await source.candidates({ sessionId: "session-pdf" }, { query: "pdf" })).length, 1);
   } finally {
     globalThis.document = previousDocument;
   }

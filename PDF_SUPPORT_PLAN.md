@@ -83,13 +83,13 @@ PDF attachment (document.pdf): [[dsh-provider-veark:pdf:<uuid>]]
 
 ### 3.3 客户端交互
 
-计划中的交互是：
+优化后的交互和解析语义以 `CODEX_PDF_SUPPORT_PLAN.md` 为准：
 
-1. 仅当当前模型 provider 为 `volcengine` 时，在 Composer 左侧显示 `PDF` 按钮。
-2. 用户选择 PDF 后，客户端仅在内存中暂存 base64，并把草稿切换为 `/pdf ` 命令。
-3. 用户输入问题并提交。
-4. 插件私有 `/pdf` 输入源把 PDF 上传到 Host sidecar，再通过标准文本 prompt 写入 token。
-5. adapter 在生成模型请求时把 token 替换成 `input_file`；token 本身不会发送给方舟。
+1. 工作区内 PDF 使用 `@相对路径.pdf` 或 `@"带空格路径.pdf"`；adapter 只在 realpath 工作区围栏内读取。
+2. PDF 按钮选择任意本地文档后立即上传 sidecar，并向草稿追加 `@.dsh-pdf/<uuid>/<编码文件名>`；UUID 保证同名上传不会改变历史引用。
+3. `/pdf` 只返回迁移提示，不再负责上传或调用 `session.prompt()`。
+4. 普通 `@PDF` 在模型未声明 `pdf`、cwd 不可用、路径越界或文件不可用时原样放行；历史 `[[token]]` 继续严格报错。
+5. adapter 将成功解析的引用替换成 `input_file`，会话日志不写入 PDF base64。
 
 ## 4. 当前已经完成
 
@@ -139,6 +139,15 @@ PDF attachment (document.pdf): [[dsh-provider-veark:pdf:<uuid>]]
   - `/pdf` claim 上传 sidecar token，再调用标准 `session.prompt()`；
   - provider 切换为非 `volcengine`，或切换到同 provider 下未声明 `pdf` 的模型后，不再返回 PDF 候选或 claim。
 - 当前测试结果：43 个测试全部通过；新增模型能力声明、客户端门控和 adapter 兜底覆盖。
+
+### 统一 `@` 引用入口（2026-09 后续施工）
+
+- 已按 `CODEX_PDF_SUPPORT_PLAN.md` 实现工作区 `@PDF`、带空格引号语法及 tool-result 排除；
+- 按钮改用带 UUID 的虚拟 `@.dsh-pdf/` 不可变引用，不再按文件名查找 sidecar；
+- 普通工作区路径有 realpath 围栏，绝对路径和越界路径不会由 adapter 读取；
+- sidecar 增加 `usedAt`，未使用暂存配对超过 24 小时后清理；
+- 增加 63 MiB 最终 JSON 请求体安全检查；
+- 自动化测试更新为 52/52；优化后的 `.dsh-test` profile 已完成 `/pdf` 提示、按钮 UUID 引用、工作区相对与带空格路径、模型门控、日志检查、真实 Ark 回复和重启恢复验证。
 - 完成临时 DeepSeek Harness profile 装载检查：
   - 使用隔离的 `$DSH_HOME` 和 `pdf-test` profile，本地 link 安装当前分支；
   - `--dump-config` 确认插件只作为独立 `dsh-provider-veark` Host 层插入；

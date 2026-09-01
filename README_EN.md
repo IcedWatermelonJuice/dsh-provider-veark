@@ -65,7 +65,7 @@ dsh plugin --profile web add /path_to_dsh-provider-veark
 2. Paste your **API key** (Volcengine Ark API key) → **Save**. The key is stored in the DSH credentials service; it is never echoed back or written to settings.yaml.
 3. Done. "火山方舟 Coding Plan" now appears in model selection (default `ark-code-latest`); text, image, and PDF document understanding are ready.
 
-To use a PDF, select a model that declares the `pdf` input capability (the default `ark-code-latest` does), click **PDF** beside the Composer, choose a document, type your question after the generated `/pdf`, and press Enter once. The button is visible only for this plugin's `volcengine` provider when the selected model declares `pdf`. Custom models default to `text`; enable `pdf` only when their actual endpoint supports document understanding.
+To use a PDF, select a model that declares the `pdf` input capability (the default `ark-code-latest` does). Reference a workspace document directly as `@docs/file.pdf`, or use `@"docs/my paper.pdf"` for spaces. For a document outside the workspace, click **PDF** beside the Composer; the plugin stages an immutable snapshot immediately and appends `@.dsh-pdf/<uuid>/<filename>` to the draft. `/pdf` remains only as a migration hint. The button is visible only for this plugin's `volcengine` provider when the selected model declares `pdf`. Custom models default to `text`; enable `pdf` only when their actual endpoint supports document understanding.
 
 The card also offers collapsible sections for cloud image handling, endpoints, image limits, local PDF retention, retries, and the model list. Leave any field empty to restore its default.
 
@@ -121,7 +121,8 @@ Then restart DSH. The plugin does not modify Harness source files. You may also 
 ## Known Limitations
 
 - Each PDF and the cumulative raw PDF data in one request are capped at 45 MiB, leaving overhead below Ark's 50 MB per-file and 64 MB whole-request limits.
-- PDF sidecars live under `%DSH_HOME%\provider-veark\pdfs\` and are kept indefinitely by default. `pdfRetentionDays` enables optional cleanup, after which old sessions cannot reopen those PDFs.
+- PDF-button sidecars live under `%DSH_HOME%\provider-veark\pdfs\`. Used snapshots are kept indefinitely by default; unused staged pairs and incomplete orphans are removed after a 24-hour grace period. `pdfRetentionDays` enables optional cleanup of used snapshots, after which old sessions cannot reopen them.
+- Plain `@path.pdf` references can read only relative paths contained by the current session workspace. Absolute and escaping paths remain ordinary text. Workspace references read the file's current contents on each request; PDF-button sidecars are immutable selection-time snapshots.
 - Session JSONL export alone does not include sidecars; migrate that directory as well for cross-machine restoration.
 - Assistant reasoning blocks are not replayed in history (Responses protocol limitation).
 - Video, audio, and TOS direct upload are not supported.
