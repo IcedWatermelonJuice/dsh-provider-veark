@@ -43,9 +43,9 @@ lib/policy.js ── 压缩预算（像素/字节）、Files 可用性状态机�
 | `pipeline.js` | 图片管线：引用收集、上传去重（并发合并 promise）、`veark-` 前缀索引复用、配额回收 |
 | `files-api.js` | Ark Files 传输层的错误分类（auth/notfound/timeout/network）、配额错误识别 |
 | `policy.js` | 图片压缩预算（总像素/单图字节/low-detail）、FilesModeController 状态机、原子持久化 |
-| `pdf-store.js` | provider 私有 PDF sidecar、session/SHA-256 校验、未使用暂存/可选保留期/孤立文件清理、`vearkPdf.stage` Remote |
+| `pdf-store.js` | provider 私有 PDF sidecar、session/SHA-256 校验、`usedAt` 生命周期（未使用暂存/可选保留期/孤立文件清理）、`vearkPdf.stage` Remote |
 | `typert.host.js` / `typert.remote-client.js` | PDF Remote 的 Host/Client 严格 Typert manifest |
-| `client.js` | 设置卡片 + 仅对 `volcengine` 中显式声明 `pdf` 的模型可见的 PDF Composer 控件与 `/pdf` 输入源 |
+| `client.js` | 设置卡片 + 仅对 `volcengine` 中显式声明 `pdf` 的模型可见的 PDF Composer 控件（选文件即 stage + 插入 `@.dsh-pdf/…` 虚拟引用）+ `/pdf` 迁移提示输入源 |
 
 ### 走的现有 SDK / 宿主服务（自己不写）
 
@@ -66,6 +66,11 @@ lib/policy.js ── 压缩预算（像素/字节）、Files 可用性状态机�
 - **PDF 不扩展 Harness 通用消息 schema**：普通 user text 中的工作区 `@相对路径.pdf` 经 realpath 围栏读取；按钮经插件私有 Remote 暂存并写入 `@.dsh-pdf/<uuid>/<name>` 不可变引用。仅本 adapter 展开为 Coding Responses `input_file`。标准 `/api/v3/files` 返回的 PDF `file_id` 已实测不被 coding endpoint 接受。
 - **cwd 安全降级**：per-session cwd 只读自 `$DSH_HOME/storages/session_projcache.json` 的 `identity.cwd`；该内部存储不可用或格式变化时，普通工作区 `@PDF` 原样放行，绝不降级到进程 cwd。绝对路径和越过工作区围栏的路径也原样放行。
 - **PDF 能力采用模型目录显式许可**：默认 `ark-code-latest` 声明 `text/image/pdf`；自定义模型默认 `text`。客户端按当前选择隐藏或拦截 PDF，adapter 再于 sidecar 读取和网络请求前按同一声明兜底拒绝，不能仅凭 provider 名推断能力。
+- **PDF 双预算**：45 MiB 原始字节累计预算（`maxPdfRequestBytes`）在展开时逐引用累计；构造完整请求体后再校验 UTF-8 JSON 总字节数 ≤ 63 MiB（`DEFAULT_MAX_REQUEST_BODY_BYTES`，为 HTTP/SDK 封装留 1 MiB 余量），超限返回 `INVALID_REQUEST` 而非静默丢弃。同请求内按 token/规范化路径缓存解析结果，历史重放不重复读盘。
+- **`@` 扫描范围刻意收窄**：普通 `@PDF` 只扫 user 消息的常规 text 块（tool-result、system、assistant 一律不扫——工具输出里可能恰好出现 `@xxx.pdf` 字样，避免误读盘）；历史 `[[token]]` marker 保持全量扫描（UUID 不可猜测）。虚拟 `@.dsh-pdf/<uuid>/…` 形态优先于普通路径判定，畸形 UUID 原文放行。
+- **两类 `@` 失败语义分离**：工作区路径引用是"可选提示"，任何失败（cwd 不可用、路径越界、文件缺失、校验失败）原样放行给模型自行处理；按钮虚拟引用是"用户显式附加的不可变快照"，在支持 PDF 的模型下缺失/损坏必须明确报错，不静默降级。
+- **sidecar `usedAt` 生命周期**：stage 写 `usedAt: null`；adapter 首次成功解析时写入（幂等不覆盖，写失败不阻断解析）；未使用配对 24h 宽限后回收，已使用配对遵循 `pdfRetentionDays`（默认 0 永久保留）。旧版本元数据无 `usedAt` 字段时视为已使用，升级不误删历史 sidecar。
+- **`/pdf` 降级为迁移提示**：输入源保留但 claim 只返回提示文案（"直接输入 @文件.pdf 或点击 PDF 按钮"），不再执行上传/prompt。候选不再按 provider 门控（提示无害，任何 provider 可见）。
 
 ## 目录结构
 
@@ -78,7 +83,8 @@ lib/policy.js     图片预算、Files 可用性状态机、持久化
 lib/pdf-store.js  PDF sidecar、Remote service、完整性与保留期清理
 lib/typert.*.js   PDF Remote 的双端严格 manifest
 lib/client.js     设置卡片 + PDF Composer 控件（无构建 bundle）
-test/fixtures/    Ark PDF 端到端烟雾测试文档
+test/fixtures/    Ark PDF 端到端烟雾测试文档（真机验证证据，测试代码不直接引用）
+test/snipaste/    README 使用说明截图
 test/             node:test 套件（unit / client-card / render / render-smoke）
 cordis.patch.yml  bundle patch：向宿主合成树 insert 本插件（HOST-PLANE，与 dsh-llm-deepseek 同层）
 ```
@@ -131,6 +137,8 @@ pnpm test   # node --test test/unit.test.mjs test/client-card.test.mjs test/rend
 - **助手 reasoning 块不回放**：Responses 的 reasoning item 需服务端 id/encrypted_content，dsh 内容块未持久化（协议差异，非遗漏）。
 - **双端点分离**：对话走 coding 网关；图片上传域独立可配。实测（2026-08）标准域 files 端点对 coding key 可用（默认配置即用）、coding 网关 files 不可用；官方日后调整无需改代码，切换 `filesBaseURL` 即可。
 - **PDF 路径实测（2026-09）**：`/api/coding/v3/files` 为 404，标准 Files PDF `file_id` 被 coding Responses 以 400 拒绝；base64 `input_file` 可用。隔离 Harness 已完成真实 Composer → Gateway → sidecar → adapter → Ark 回复，并验证重启恢复。
+- **PDF 统一 `@` 入口（2026-09）**：内置 `@` 引用实证为"只传文件名文本、内容需模型自行工具读取"（`dsh-file-reference` 契约），故将按钮/`/pdf`/手打三种来源统一为 `@` 文本形态、由 adapter 拦截展开。完整设计、失败语义矩阵与真机验证记录见 git 历史中的 `CODEX_PDF_SUPPORT_PLAN.md`（v0.2.0，已随该版本移出追踪）。
 - **web「设置 → 模型」页本渠道编辑卡无可填项**：宿主硬编码 layoutOf 仅认 llm-deepseek/llm-pi-ai 家族，第三方命名空间一律如此；由本插件 client half 的 `settings.plugin.item` 卡片补足。
 - **`link:` 开发安装下**，插件解析到工作区自己的 @deepseek-ai/* 副本；宿主对 LlmError 仅两处 instanceof，最坏影响是 turn 级错误 code 显示 UNKNOWN，功能性路由走 `.code` duck-typing 不受影响（"route on code, never on the prototype chain"）。
+- **`session_projcache.json` 是观测事实而非契约**：per-session cwd 依赖其 `version: 3` 的 `tables.sessions[id].identity.cwd` 结构。Harness 升级若改变该结构，工作区 `@PDF` 自动失效（原样放行），虚拟引用不受影响；届时在本文件记录新结构并更新 `resolveWorkspacePdf` 即可。
 - **密钥安全**：原因串仅含分类事实（kind/HTTP status/code），凭据经 assertUsableApiKey 且不进消息/日志/导出。
