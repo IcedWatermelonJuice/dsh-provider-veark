@@ -45,8 +45,9 @@ function makeScope(initialValue) {
 }
 
 function makeCtx(scope, credentialLog) {
-  const ctx = { card: null };
+  const ctx = { card: null, injected: [] };
   ctx.effect = (fn) => fn();
+  ctx.inject = (names, callback) => { ctx.injected.push(names); return callback(ctx); };
   ctx.get = (name) => name === "connection" ? ctx.connection : name === "remote" ? ctx.remote : undefined;
   ctx.locale = { bind: () => (key) => key, register: (ns, dict) => { ctx.localeRegistered = { ns, dict }; } };
   ctx.connection = { api: { credentials: {
@@ -63,7 +64,7 @@ function makeCtx(scope, credentialLog) {
 }
 
 const ATTACHMENT_ID = "sha256:" + "a".repeat(64);
-const ALL_FIELDS = ["preferFiles","apiKeyEnv","chatBaseURL","filesBaseURL","filesApiKeyEnv","requestImagePixelBudget","requestImageMaxBytes","fileExpirySeconds","filesApiTimeoutMs","filesProbeIntervalMs"];
+const ALL_FIELDS = ["preferFiles","apiKeyEnv","chatBaseURL","filesBaseURL","filesApiKeyEnv","requestImagePixelBudget","requestImageMaxBytes","fileExpirySeconds","filesApiTimeoutMs","filesProbeIntervalMs","pdfRetentionDays"];
 
 describe("client 卡片", () => {
   test("工厂注册 + apply 挂载：注册进 settings.plugin.item，key=命名空间", () => {
@@ -71,9 +72,11 @@ describe("client 卡片", () => {
     assert.equal(exports.inject.includes("slots"), true);
     assert.equal(exports.inject.includes("settingsScope"), true);
     assert.equal(exports.inject.includes("connection"), true);
+    assert.equal(exports.inject.includes("remote.vearkPdf"), false);
     const log = { sets: [] };
     const ctx = makeCtx(makeScope(), log);
     exports.apply(ctx);
+    assert.equal(ctx.injected.some((names) => names.includes("remote.vearkPdf")), true);
     assert.equal(ctx.localeRegistered.ns, "dsh-provider-veark");
     assert.equal(ctx.card.options.key, "dsh-provider-veark");
   });
@@ -187,4 +190,73 @@ describe("client 卡片", () => {
       assert.deepEqual(log.sets, [{ ref: "MY_CUSTOM_REF", value: "sk-x" }]);
     });
   });
+});
+
+test("PDF 客户端链路只在 volcengine 下挂载并通过私有 Remote 提交 token", async () => {
+  const { exports } = loadClientBundle();
+  const scope = makeScope();
+  const credentialLog = { sets: [] };
+  const ctx = makeCtx(scope, credentialLog);
+  const slots = [];
+  let source;
+  let mounted;
+  let prompt;
+  let draft;
+  let changePromise;
+  const modelState = { current: { provider: "volcengine", model: "ark-code-latest" }, status: "ready" };
+  const modelStore = { getSnapshot: () => modelState, subscribe: () => () => {} };
+  const session = { prompt: async (content, mode) => { prompt = { content, mode }; return { ok: true, value: { accepted: true } }; } };
+  const services = {
+    connection: ctx.connection,
+    remote: ctx.remote,
+    sessions: { sessionOf: () => session },
+    inputTriggers: { registerSource(value) { source = value; return () => {}; } },
+    modelDirectories: { directoryFor: () => ({ store: modelStore, load: async () => modelState }) }
+  };
+  ctx.get = (name) => services[name];
+  ctx.remote.$mount = async (contribution) => { mounted = contribution; return () => {}; };
+  ctx.remote.vearkPdf = { stage: async (request) => {
+    assert.equal(request.mediaType, "application/pdf");
+    assert.equal(Buffer.from(request.data, "base64").subarray(0, 5).toString(), "%PDF-");
+    return { ok: true, value: { token: "123e4567-e89b-42d3-a456-426614174000", name: request.name, bytes: 15 } };
+  } };
+  ctx.slots = {
+    inject(name, thunk) { for (const registration of thunk()) slots.push({ name, registration }); },
+    register(options, component) { return { options, component }; }
+  };
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    querySelector: () => ({}),
+    createElement(tag) {
+      assert.equal(tag, "input");
+      const picker = {
+        files: [{ name: "spec.pdf", size: 15, arrayBuffer: async () => Uint8Array.from(Buffer.from("%PDF-1.4\n%%EOF\n")).buffer }],
+        style: {},
+        click() { changePromise = picker.onchange(); }
+      };
+      return picker;
+    },
+    head: { appendChild() {} }
+  };
+  try {
+    await exports.apply(ctx);
+    assert.equal(mounted.package, "@icedcola/dsh-provider-veark");
+    assert.equal(mounted.descriptors[0].namespace, "vearkPdf");
+    assert.equal(typeof source.matchEnter, "function");
+    const pdfSlot = slots.find((entry) => entry.name === "conversation.input.left");
+    assert.ok(pdfSlot);
+    const bag = pdfSlot.registration.options.inject("session-pdf");
+    await bag.choosePdf("总结接口", { setDraft(value) { draft = value; } });
+    await changePromise;
+    assert.equal(draft, "/pdf 总结接口");
+    const outcome = await source.matchEnter({ sessionId: "session-pdf" }, draft);
+    const submitted = await outcome.claim.submit("总结接口", {});
+    assert.deepEqual(submitted, { kind: "success" });
+    assert.equal(prompt.mode, "queue");
+    assert.match(prompt.content[0].text, /\[\[dsh-provider-veark:pdf:123e4567/u);
+    modelState.current = { provider: "deepseek", model: "deepseek-chat" };
+    assert.deepEqual(await source.candidates({ sessionId: "session-pdf" }, { query: "pdf" }), []);
+  } finally {
+    globalThis.document = previousDocument;
+  }
 });

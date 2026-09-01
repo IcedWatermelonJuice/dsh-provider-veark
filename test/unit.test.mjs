@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { test, describe, beforeEach, afterEach } from "node:test";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { VeArkAdapter } from "../lib/adapter.js";
 import { resolveAdapterOptions, Config, apply, PROVIDER } from "../lib/index.js";
@@ -14,6 +14,7 @@ import { VeArkFileStore, VeArkUploadIndex } from "../lib/pipeline.js";
 import { FilesModeController, FilesStateStore } from "../lib/policy.js";
 import { providerRejectedFileId, providerRejectedNormalizedImage } from "../lib/adapter.js";
 import { classifyFilesFailure } from "../lib/files-api.js";
+import { PDF_MEDIA_TYPE, VeArkPdfStore } from "../lib/pdf-store.js";
 
 const TMP_ROOT = join(import.meta.dirname, "tmp");
 mkdirSync(TMP_ROOT, { recursive: true });
@@ -26,7 +27,7 @@ function tempDir() {
 }
 
 /** 构造一个可注入 files 客户端替身与 Responses 客户端替身的 adapter。 */
-function makeAdapter({ responsesClient, client, preferFiles = true, mode, tmp, models } = {}) {
+function makeAdapter({ responsesClient, client, preferFiles = true, mode, tmp, models, resolvePdf } = {}) {
 	const options = resolveAdapterOptions({
 		models: models ?? [{
 			id: "ark-code-latest",
@@ -50,6 +51,7 @@ function makeAdapter({ responsesClient, client, preferFiles = true, mode, tmp, m
 		resolveApiKey: async () => "test-key",
 		resolveFilesApiKey: async () => "test-key",
 		resolveAttachments: () => attachments,
+		resolvePdf,
 		files,
 		mode: mode ?? new FilesModeController({ store: new FilesStateStore(join(tmp ?? tempDir(), "files-state.json")) }),
 		createResponsesClient: responsesClient ? () => responsesClient : undefined
@@ -302,6 +304,98 @@ describe("文本链路（无图）", () => {
 		const adapter = makeAdapter({ responsesClient: responses, client: fakeFilesClient() });
 		await assert.rejects(collect(adapter.stream({ model: "ark-code-latest", messages: [userText("hi")] })), (error) => error.code === "AUTH");
 	});
+	test("provider 私有 PDF marker 转成 Coding Responses 的 base64 input_file", async () => {
+		const responses = fakeResponsesClient({ events: [COMPLETED] });
+		const token = "123e4567-e89b-42d3-a456-426614174000";
+		const pdf = Buffer.from("%PDF-1.4\n%%EOF\n");
+		const adapter = makeAdapter({
+			responsesClient: responses,
+			resolvePdf: async (sessionId, seen) => {
+				assert.equal(sessionId, "session-pdf");
+				assert.equal(seen, token);
+				return { name: "spec.pdf", mediaType: PDF_MEDIA_TYPE, data: pdf };
+			}
+		});
+		await collect(adapter.stream({ sessionId: "session-pdf", model: "ark-code-latest", messages: [userText(`PDF attachment (spec.pdf): [[dsh-provider-veark:pdf:${token}]]\n总结接口`)] }));
+		const content = responses.state.bodies[0].input[0].content;
+		const file = content.find((part) => part.type === "input_file");
+		assert.equal(file.filename, "spec.pdf");
+		assert.equal(file.file_data, `data:application/pdf;base64,${pdf.toString("base64")}`);
+		assert.equal(JSON.stringify(content).includes("dsh-provider-veark:pdf"), false);
+	});
+	test("历史 PDF sidecar 丢失时返回可识别的 UNSUPPORTED_CONTENT", async () => {
+		const token = "123e4567-e89b-42d3-a456-426614174000";
+		const adapter = makeAdapter({ responsesClient: fakeResponsesClient({ events: [COMPLETED] }), resolvePdf: async () => { throw Object.assign(new Error("missing sidecar"), { code: "ENOENT" }); } });
+		await assert.rejects(collect(adapter.stream({ sessionId: "session-pdf", model: "ark-code-latest", messages: [userText(`[[dsh-provider-veark:pdf:${token}]]`)] })), (error) => error.code === "UNSUPPORTED_CONTENT" && /Unable to resolve Ark PDF attachment/u.test(error.message));
+	});
+});
+
+describe("PDF provider sidecar", () => {
+	test("stage/resolve 绑定 session，并校验 PDF 完整性", async () => {
+		const tmp = tempDir();
+		try {
+			const store = new VeArkPdfStore(join(tmp, "pdfs"), 1024);
+			const source = Buffer.from("%PDF-1.7\n1 0 obj\n%%EOF\n");
+			const staged = await store.stage({ sessionId: "session-a", name: "paper.pdf", mediaType: PDF_MEDIA_TYPE, data: source.toString("base64") });
+			assert.equal(staged.name, "paper.pdf");
+			const resolved = await store.resolve("session-a", staged.token);
+			assert.equal(resolved.name, "paper.pdf");
+			assert.deepEqual(resolved.data, source);
+			await assert.rejects(store.resolve("session-b", staged.token), /does not belong/u);
+			const tampered = Buffer.from(source);
+			tampered[tampered.length - 2] ^= 1;
+			writeFileSync(join(tmp, "pdfs", `${staged.token}.pdf`), tampered);
+			await assert.rejects(store.resolve("session-a", staged.token), /integrity check/u);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+	 test("拒绝伪 PDF 和超限文件", async () => {
+		const tmp = tempDir();
+		try {
+			const store = new VeArkPdfStore(join(tmp, "pdfs"), 12);
+			await assert.rejects(store.stage({ sessionId: "s", name: "fake.pdf", mediaType: PDF_MEDIA_TYPE, data: Buffer.from("not pdf").toString("base64") }), /not a PDF/u);
+			await assert.rejects(store.stage({ sessionId: "s", name: "large.pdf", mediaType: PDF_MEDIA_TYPE, data: Buffer.from("%PDF-" + "x".repeat(20)).toString("base64") }), /1 through 12/u);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+	test("可选保留期清理过期配对文件，默认 0 不删除历史 sidecar", async () => {
+		const tmp = tempDir();
+		try {
+			let now = Date.parse("2026-09-01T00:00:00.000Z");
+			const root = join(tmp, "pdfs");
+			const store = new VeArkPdfStore(root, 1024, { retentionDays: 0, now: () => now });
+			const staged = await store.stage({ sessionId: "session-a", name: "paper.pdf", mediaType: PDF_MEDIA_TYPE, data: Buffer.from("%PDF-1.7\n%%EOF\n").toString("base64") });
+			now += 10 * 24 * 60 * 60 * 1000;
+			assert.deepEqual(await store.cleanup({ force: true }), { expired: 0, orphans: 0 });
+			assert.equal(existsSync(join(root, `${staged.token}.pdf`)), true);
+			store.retentionDays = 1;
+			assert.deepEqual(await store.cleanup({ force: true }), { expired: 1, orphans: 0 });
+			assert.equal(existsSync(join(root, `${staged.token}.pdf`)), false);
+			assert.equal(existsSync(join(root, `${staged.token}.json`)), false);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+	test("只清理超过宽限期的孤立 token 文件", async () => {
+		const tmp = tempDir();
+		try {
+			const now = Date.parse("2026-09-02T00:00:00.000Z");
+			const root = join(tmp, "pdfs");
+			mkdirSync(root, { recursive: true });
+			const token = "123e4567-e89b-42d3-a456-426614174000";
+			const orphan = join(root, `${token}.pdf`);
+			writeFileSync(orphan, "%PDF-1.4\n%%EOF\n");
+			const old = new Date(now - 2 * 24 * 60 * 60 * 1000);
+			utimesSync(orphan, old, old);
+			const store = new VeArkPdfStore(root, 1024, { now: () => now });
+			assert.deepEqual(await store.cleanup({ force: true }), { expired: 0, orphans: 1 });
+			assert.equal(existsSync(orphan), false);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
 });
 
 describe("图片管线（Files API 优先）", () => {
@@ -482,6 +576,7 @@ describe("配置与装配", () => {
 		const resolved = Config({});
 		assert.equal(resolved.apiKeyEnv, "ARK_API_KEY");
 		assert.equal(resolved.preferFiles, true);
+		assert.equal(resolved.pdfRetentionDays, 0);
 		const ark = resolved.models.find((m) => m.id === "ark-code-latest");
 		assert.deepEqual(ark.inputModalities, ["text", "image"]);
 		assert.equal(ark.contextWindow, 1000000);
@@ -500,6 +595,7 @@ describe("配置与装配", () => {
 		assert.throws(() => resolveAdapterOptions({ fileExpirySeconds: 10 }), /fileExpirySeconds/);
 		assert.throws(() => resolveAdapterOptions({ imageOffloadByteQuantum: 200, maxRequestFilesBytes: 100 }), /imageOffloadByteQuantum/);
 		assert.throws(() => resolveAdapterOptions({ chatBaseURL: "" }), /chatBaseURL/);
+		assert.throws(() => resolveAdapterOptions({ pdfRetentionDays: -1 }), /pdfRetentionDays/);
 	});
 	test("apply 冒烟：注册 provider + adapter，设置分区可安装", () => {
 		const registered = { adapters: [], configurable: [] };

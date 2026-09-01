@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <strong>Plug the Volcengine Ark Coding Plan into DeepSeek Harness: text + image chat, images via Files API, paste-and-go API key</strong><br>
+  <strong>Plug Volcengine Ark Coding Plan into DeepSeek Harness: text, images, and PDF document understanding</strong><br>
 </p>
 
 <div align="center">
@@ -63,9 +63,11 @@ dsh plugin --profile web add /path_to_dsh-provider-veark
 
 1. Open the DSH web UI → **Settings → Plugins → "火山方舟 Coding Plan"**, expand the card.
 2. Paste your **API key** (Volcengine Ark API key) → **Save**. The key is stored in the DSH credentials service; it is never echoed back or written to settings.yaml.
-3. Done. "火山方舟 Coding Plan" now appears in model selection (default `ark-code-latest`, text + image input); image chat works out of the box.
+3. Done. "火山方舟 Coding Plan" now appears in model selection (default `ark-code-latest`); text, image, and PDF document understanding are ready.
 
-The card also offers collapsible sections for: cloud file service on/off, endpoint URLs, image resolution/size limits, timeouts & retries, and the model list. Leave any field empty to restore its default.
+To use a PDF, select `ark-code-latest`, click **PDF** beside the Composer, choose a document, type your question after the generated `/pdf`, and press Enter once. The button is visible only for this plugin's `volcengine` provider.
+
+The card also offers collapsible sections for cloud image handling, endpoints, image limits, local PDF retention, retries, and the model list. Leave any field empty to restore its default.
 
 <details>
 <summary>Advanced settings.yaml fields (optional)</summary>
@@ -91,6 +93,7 @@ dsh-provider-veark:
   # fileExpirySeconds: 604800
   # filesApiTimeoutMs: 15000
   # filesProbeIntervalMs: 21600000
+  # pdfRetentionDays: 0       # 0 = keep indefinitely; 1–3650 = clean old sidecars on a later upload
 ```
 
 Alternatively, skip the card entirely and set the `ARK_API_KEY` environment variable before starting DSH (or a custom reference name via `apiKeyEnv`).
@@ -103,7 +106,7 @@ Alternatively, skip the card entirely and set the `ARK_API_KEY` environment vari
 dsh plugin --profile web remove @icedcola/dsh-provider-veark
 ```
 
-Then restart DSH. The plugin does not modify any host files; afterwards you may also delete `%DSH_HOME%\dsh-provider-veark\` (only this plugin's state files).
+Then restart DSH. The plugin does not modify Harness source files. You may also delete `%DSH_HOME%\dsh-provider-veark\` (image state) and `%DSH_HOME%\provider-veark\` (PDF sidecars). Removing sidecars makes historical PDF tokens unreadable.
 
 ## Endpoints & Billing
 
@@ -111,13 +114,17 @@ Then restart DSH. The plugin does not modify any host files; afterwards you may 
 |---|---|---|
 | Chat | `…/api/coding/v3/responses` | Coding Plan subscription |
 | File upload/delete | `…/api/v3/files` (default) | Storage API, no model tokens |
+| PDF understanding | Base64 `input_file` inside the chat request | Coding Plan; no Files API or TOS |
 
 > Field-tested (2026-08, coding key): the coding gateway `/api/coding/v3/files` is not available; the standard domain `/api/v3/files` works. It looks like Volcengine may migrate file storage for coding plans over to the standard domain later. The default (standard domain) already works — no configuration needed.
 
 ## Known Limitations
 
+- Each PDF and the cumulative raw PDF data in one request are capped at 45 MiB, leaving overhead below Ark's 50 MB per-file and 64 MB whole-request limits.
+- PDF sidecars live under `%DSH_HOME%\provider-veark\pdfs\` and are kept indefinitely by default. `pdfRetentionDays` enables optional cleanup, after which old sessions cannot reopen those PDFs.
+- Session JSONL export alone does not include sidecars; migrate that directory as well for cross-machine restoration.
 - Assistant reasoning blocks are not replayed in history (Responses protocol limitation).
-- No video, document, or TOS direct-upload support — planned future work.
+- Video, audio, and TOS direct upload are not supported.
 
 ## Development
 

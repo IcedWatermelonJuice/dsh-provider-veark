@@ -1,12 +1,14 @@
 {
   "name": "@icedcola/dsh-provider-veark",
-  "version": "0.1.11",
-  "description": "火山方舟 Coding Plan LLM provider for DeepSeek Harness — 图片走 Ark Files API 优先（input_image + file_id），base64 data URL 自动兜底，Responses API 流式",
+  "version": "0.2.0",
+  "description": "火山方舟 Coding Plan LLM provider for DeepSeek Harness — provider-scoped PDF、图片与 Responses API 流式支持",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
+    "./typert": "./lib/typert.host.js",
+    "./remote": "./lib/typert.remote-client.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -23,6 +25,7 @@
     "volcengine",
     "ark",
     "coding-plan",
+    "pdf",
     "vision",
     "files-api"
   ],
@@ -45,7 +48,8 @@
   "dependencies": {
     "@volcengine/ark-runtime": "^1.0.10",
     "@deepseek-ai/schemastery": "^3.18.1",
-    "eventsource-parser": "^3.1.0"
+    "eventsource-parser": "^3.1.0",
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-atomic-write": ">=0.1.1-rc.2",
@@ -54,7 +58,8 @@
     "@deepseek-ai/dsh-launch-environment": ">=0.1.1-rc.2",
     "@deepseek-ai/dsh-llm": ">=0.1.1-rc.2",
     "@deepseek-ai/dsh-settings": ">=0.1.1-rc.2",
-    "@deepseek-ai/dsh-timeout": ">=0.1.1-rc.2"
+    "@deepseek-ai/dsh-timeout": ">=0.1.1-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": ">=0.1.1-rc.2"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-atomic-write": {
@@ -77,6 +82,9 @@
     },
     "@deepseek-ai/dsh-timeout": {
       "optional": true
+    },
+    "@deepseek-ai/dsh-typert-protocol": {
+      "optional": true
     }
   },
   "devDependencies": {
@@ -87,6 +95,7 @@
     "@deepseek-ai/dsh-llm": "^0.1.1-rc.2",
     "@deepseek-ai/dsh-settings": "^0.1.1-rc.2",
     "@deepseek-ai/dsh-timeout": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.1-rc.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
